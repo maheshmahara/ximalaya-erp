@@ -1,0 +1,15 @@
+.env
+.env.local
+*.pem
+*.key
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+apps/web/.next/
+apps/web/out/
+caddy_data/
+caddy_config/
+pgdata/
+.DS_Store

@@ -1,0 +1,8 @@
+[project]
+name = "ximalaya-workers"
+version = "1.0.0"
+dependencies = [
+    "celery>=5.3.6",
+    "redis>=5.0.1",
+    "psycopg2-binary>=2.9.9",
+]

@@ -1,0 +1,9 @@
+name: Ximalaya ERP CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Tree
+        run: ls -la

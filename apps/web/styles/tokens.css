@@ -1,0 +1,28 @@
+:root {
+  --brand-green: oklch(52.7% 0.145 158);
+  --roast-brown: oklch(50.4% 0.082 68);
+  --g-ambient-1: radial-gradient(circle at 10% 20%, oklch(52.7% 0.145 158 / 0.12), transparent 45%);
+  --g-ambient-2: radial-gradient(circle at 90% 80%, oklch(50.4% 0.082 68 / 0.10), transparent 45%);
+  --g-pane-bg: oklch(100% 0 0 / 0.65);
+  --g-pane-bd: oklch(100% 0 0 / 0.30);
+  --g-blur-pane: blur(18px) saturate(180%);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --g-pane-bg: oklch(18% 0.01 75 / 0.70);
+    --g-pane-bd: oklch(100% 0 0 / 0.12);
+  }
+}
+.ambient-wash {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--g-ambient-1), var(--g-ambient-2);
+  pointer-events: none;
+}
+.pane {
+  background: var(--g-pane-bg);
+  backdrop-filter: var(--g-blur-pane);
+  border: 1px solid var(--g-pane-bd);
+  border-radius: 16px;
+}

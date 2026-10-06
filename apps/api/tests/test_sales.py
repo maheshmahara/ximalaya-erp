@@ -1,30 +1,64 @@
 import pytest
-from decimal import Decimal
-
-def compute_nepal_ird_invoice(subtotal: Decimal, discount_pct: Decimal = Decimal("0")):
-    discount_amount = (subtotal * (discount_pct / Decimal("100.00"))).quantize(Decimal("0.01"))
-    taxable_amount = subtotal - discount_amount
-    vat_13_pct = (taxable_amount * Decimal("0.13")).quantize(Decimal("0.01"))
-    grand_total = (taxable_amount + vat_13_pct).quantize(Decimal("0.01"))
-    return {
-        "subtotal": subtotal,
-        "discount": discount_amount,
-        "taxable": taxable_amount,
-        "vat_13": vat_13_pct,
-        "grand_total": grand_total
-    }
+import os
+from apps.api.src.modules.sales.schemas import SalesInvoiceCreate, SalesLineItem
 
 def test_ird_fiscal_vat_standard():
-    # 10 Drip Boxes @ Rs 750.00 = Rs 7,500.00
-    calc = compute_nepal_ird_invoice(Decimal("7500.00"))
-    assert calc["taxable"] == Decimal("7500.00")
-    assert calc["vat_13"] == Decimal("975.00")
-    assert calc["grand_total"] == Decimal("8475.00")
+    item1 = SalesLineItem(
+        description="Green Bean Specialty Micro-lot",
+        quantity_kg=100.0,
+        unit_price_npr=1200.0,
+        is_taxable=True
+    )
+    invoice = SalesInvoiceCreate(
+        buyer_pan="302918273",
+        buyer_name="Himalayan Java Pvt. Ltd.",
+        fiscal_year="2083/84",
+        items=[item1],
+        discount_amount=0.0
+    )
+    
+    assert invoice.subtotal_amount == 120000.0
+    assert invoice.taxable_amount == 120000.0
+    assert invoice.vat_amount == 15600.0 # Standard 13% Nepal VAT
+    assert invoice.grand_total == 135600.0
 
 def test_ird_fiscal_vat_with_discount():
-    # Subtotal Rs 10,000.00 with 10% commercial volume discount
-    calc = compute_nepal_ird_invoice(Decimal("10000.00"), discount_pct=Decimal("10.00"))
-    assert calc["discount"] == Decimal("1000.00")
-    assert calc["taxable"] == Decimal("9000.00")
-    assert calc["vat_13"] == Decimal("1170.00")
-    assert calc["grand_total"] == Decimal("10170.00")
+    item1 = SalesLineItem(
+        description="Roasted Specialty Bourbon",
+        quantity_kg=10.0,
+        unit_price_npr=2500.0,
+        is_taxable=True
+    )
+    invoice = SalesInvoiceCreate(
+        buyer_pan="999888777",
+        buyer_name="Third Wave Roasters",
+        fiscal_year="2083/84",
+        items=[item1],
+        discount_amount=1000.0 # NPR 1,000 cash discount
+    )
+    
+    assert invoice.subtotal_amount == 25000.0
+    assert invoice.taxable_amount == 24000.0 # 25000 - 1000
+    assert invoice.vat_amount == 3120.0     # 13% of 24000
+    assert invoice.grand_total == 27120.0
+
+def test_generate_ird_tax_invoice_pdf(tmp_path):
+    from apps.api.src.modules.sales.invoice_generator import generate_ird_tax_invoice
+
+    test_pdf = str(tmp_path / "test_tax_invoice.pdf")
+    items = [
+        {"desc": "Roasted Coffee", "qty": 10.0, "rate": 2000.0}
+    ]
+
+    output = generate_ird_tax_invoice(
+        invoice_no="INV-2083-0001",
+        fiscal_year="2083/84",
+        buyer_name="Test Buyer",
+        buyer_pan="123456789",
+        buyer_address="Kathmandu",
+        items=items,
+        output_pdf_path=test_pdf
+    )
+
+    assert os.path.exists(output)
+    assert os.path.getsize(output) > 1000  # ReportLab PDF binary successfully generated

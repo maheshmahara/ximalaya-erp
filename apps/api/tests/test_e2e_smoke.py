@@ -1,16 +1,25 @@
 import pytest
 from playwright.sync_api import sync_playwright, expect
 import httpx
+import time
 
 FRONTEND_URL = "http://web:3000"
 BACKEND_URL = "http://localhost:8000"
 
 def test_api_health_and_spatial_endpoints():
-    """Verify backend health and PostGIS GeoJSON endpoints."""
+    """Verify backend health and PostGIS GeoJSON endpoints with wait retry."""
     with httpx.Client(base_url=BACKEND_URL, timeout=10.0) as client:
-        # Check health
-        health_res = client.get("/healthz")
-        assert health_res.status_code == 200
+        # Retry loop to allow container process to finish port binding
+        health_ok = False
+        for _ in range(10):
+            try:
+                res = client.get("/healthz")
+                if res.status_code == 200:
+                    health_ok = True
+                    break
+            except Exception:
+                time.sleep(1.0)
+        assert health_ok, "FastAPI backend /healthz did not respond within 10s"
 
         # Check PostGIS GeoJSON plots
         spatial_res = client.get("/spatial/plots")

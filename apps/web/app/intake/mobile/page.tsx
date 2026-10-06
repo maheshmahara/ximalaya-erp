@@ -9,6 +9,7 @@ import {
   IntakeRecord 
 } from '@/lib/offlineStore';
 import { useSerialScale } from '@/lib/useSerialScale';
+import SignaturePad from '@/components/SignaturePad';
 import { apiClient } from '@/lib/api';
 
 export default function MobileIntakePage() {
@@ -29,6 +30,7 @@ export default function MobileIntakePage() {
   const [brix, setBrix] = useState<number>(22.0);
   const [floatersPct, setFloatersPct] = useState<number>(1.5);
   const [baseRate, setBaseRate] = useState<number>(100.0);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
 
   // Calculations
   const netWeight = Math.max(0, grossWeight - tareWeight);
@@ -305,6 +307,12 @@ export default function MobileIntakePage() {
                 />
               </div>
             </div>
+
+            {/* Farmer Signature Pad */}
+            <SignaturePad
+              onSave={(dataUrl) => setSignatureData(dataUrl)}
+              onClear={() => setSignatureData(null)}
+            />
           </div>
 
           {/* Pricing Settlement Box */}

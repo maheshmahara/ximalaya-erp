@@ -27,23 +27,3 @@ app.conf.update(
         },
     },
 )
-
-@app.task
-def send_intake_receipt_sms(farmer_phone: str, message: str):
-    print(f"[SMS DISPATCH] To: {farmer_phone} | Body: {message}")
-    return {"status": "SENT", "recipient": farmer_phone}
-
-@app.task
-def monitor_cherry_pulping_deadlines():
-    print("[BEAT TICK] Checking active cherry intake lots against 8-hour pulping window... OK")
-    return {"status": "CHECKED", "breaches_detected": 0}
-
-@app.task
-def monitor_inbound_fleet_trips():
-    print("[BEAT TICK] Checking inbound transit waybills on Lumbini highway corridors... OK")
-    return {"status": "CHECKED", "active_transits": 2}
-
-@app.task
-def evaluate_silo_repose_maturities():
-    print("[BEAT TICK] Evaluating parchment silo aging & moisture stability (45-day threshold)... OK")
-    return {"status": "CHECKED", "matured_lots": 1}

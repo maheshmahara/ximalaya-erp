@@ -8,6 +8,7 @@ import {
   markIntakeSynced, 
   IntakeRecord 
 } from '@/lib/offlineStore';
+import { useSerialScale } from '@/lib/useSerialScale';
 import { apiClient } from '@/lib/api';
 
 export default function MobileIntakePage() {
@@ -15,9 +16,8 @@ export default function MobileIntakePage() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [records, setRecords] = useState<IntakeRecord[]>([]);
 
-  // Bluetooth Scale State
-  const [isScaleConnected, setIsScaleConnected] = useState<boolean>(false);
-  const [scaleStatus, setScaleStatus] = useState<string>('Bluetooth Scale Disconnected');
+  // Hardware Web Serial Scale
+  const scale = useSerialScale(9600);
 
   // Form Fields
   const [farmerName, setFarmerName] = useState('Sita Gurung');
@@ -62,28 +62,17 @@ export default function MobileIntakePage() {
     }
   }
 
-  // Web Bluetooth API Scale Connection
-  async function connectBluetoothScale() {
-    if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
-      alert('Web Bluetooth API is not supported on this browser. Chrome on Android or Desktop is recommended.');
-      return;
+  const captureScaleGross = () => {
+    if (scale.liveWeight !== null) {
+      setGrossWeight(scale.liveWeight);
     }
+  };
 
-    try {
-      setScaleStatus('Scanning BLE Scales...');
-      const device = await (navigator as any).bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: ['battery_service', 0x181D] // Weight scale standard GATT service
-      });
-
-      setScaleStatus(`Connected: ${device.name || 'Digital Scale'}`);
-      setIsScaleConnected(true);
-    } catch (err: any) {
-      console.warn('Bluetooth pairing dismissed/failed:', err);
-      setScaleStatus('BLE Pair Cancelled');
-      setIsScaleConnected(false);
+  const captureScaleTare = () => {
+    if (scale.liveWeight !== null) {
+      setTareWeight(scale.liveWeight);
     }
-  }
+  };
 
   async function triggerSync() {
     if (!navigator.onLine || isSyncing) return;
@@ -156,7 +145,7 @@ export default function MobileIntakePage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 font-sans">
-      {/* Network & Scale Header */}
+      {/* Header Bar */}
       <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-md mb-4 gap-2">
         <div className="flex items-center space-x-2">
           <span className={`w-3 h-3 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
@@ -167,28 +156,28 @@ export default function MobileIntakePage() {
 
         <div className="flex items-center space-x-2 w-full sm:w-auto justify-between sm:justify-end">
           <button
-            onClick={connectBluetoothScale}
-            className={`px-3 py-1 text-xs font-medium rounded-lg border transition-all flex items-center gap-1.5 ${
-              isScaleConnected 
-                ? 'bg-emerald-950 border-emerald-700 text-emerald-300'
+            onClick={scale.isConnected ? scale.disconnect : scale.connect}
+            className={`px-3 py-1.5 text-xs font-mono font-medium rounded-xl border transition-all flex items-center gap-2 ${
+              scale.isConnected 
+                ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
                 : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
             }`}
           >
-            <span className={`w-2 h-2 rounded-full ${isScaleConnected ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-            {scaleStatus}
+            <span className={`w-2 h-2 rounded-full ${scale.isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+            {scale.isConnected ? `RS-232: ${scale.liveWeight ?? 0.0} kg` : 'Connect Scale (RS-232)'}
           </button>
 
           <button
             onClick={triggerSync}
             disabled={isSyncing || !isOnline}
-            className="px-3 py-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-xs font-bold rounded-lg transition-all"
+            className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-xs font-bold rounded-xl transition-all"
           >
             {isSyncing ? 'Syncing...' : 'Sync'}
           </button>
         </div>
       </header>
 
-      {/* Primary Intake Form */}
+      {/* Main Intake Form */}
       <main className="max-w-md mx-auto space-y-4">
         <form onSubmit={handleSubmit} className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 shadow-2xl backdrop-blur-lg space-y-4">
           <h1 className="text-xl font-bold tracking-tight text-white flex items-center justify-between">
@@ -223,6 +212,7 @@ export default function MobileIntakePage() {
               </div>
             </div>
 
+            {/* 8-Hour Countdown Status */}
             <div>
               <label className="text-xs text-slate-400">Harvest Timeline</label>
               <div className={`p-3 rounded-xl border mt-1 flex justify-between items-center ${
@@ -246,10 +236,21 @@ export default function MobileIntakePage() {
               </div>
             </div>
 
-            {/* Weights */}
+            {/* Weight Inputs with Direct Hardware Capture Buttons */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs text-slate-400">Gross Weight (kg)</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-xs text-slate-400">Gross (kg)</label>
+                  {scale.isConnected && (
+                    <button
+                      type="button"
+                      onClick={captureScaleGross}
+                      className="text-[10px] text-sky-400 hover:underline font-mono"
+                    >
+                      [Capture]
+                    </button>
+                  )}
+                </div>
                 <input
                   type="number"
                   step="0.1"
@@ -259,7 +260,18 @@ export default function MobileIntakePage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Tare Crate (kg)</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-xs text-slate-400">Tare Crate (kg)</label>
+                  {scale.isConnected && (
+                    <button
+                      type="button"
+                      onClick={captureScaleTare}
+                      className="text-[10px] text-sky-400 hover:underline font-mono"
+                    >
+                      [Capture]
+                    </button>
+                  )}
+                </div>
                 <input
                   type="number"
                   step="0.1"
@@ -295,6 +307,7 @@ export default function MobileIntakePage() {
             </div>
           </div>
 
+          {/* Pricing Settlement Box */}
           <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700/60 space-y-2">
             <div className="flex justify-between text-xs text-slate-400">
               <span>Net Cherry Weight</span>
@@ -320,6 +333,7 @@ export default function MobileIntakePage() {
           </button>
         </form>
 
+        {/* Local Journal */}
         <section className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-3">
           <div className="flex justify-between items-center">
             <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider">Device Journal</h2>

@@ -4,6 +4,7 @@ from apps.api.src.modules.procurement.spatial_router import router as spatial_ro
 from apps.api.src.modules.sales.router import router as sales_router
 from apps.api.src.modules.traceability.router import router as traceability_router
 from apps.api.src.modules.analytics.router import router as analytics_router
+from apps.api.src.modules.logistics.router import router as logistics_router
 
 app = FastAPI(
     title="Ximalaya Coffee ERP API",
@@ -27,3 +28,4 @@ app.include_router(spatial_router)
 app.include_router(sales_router)
 app.include_router(traceability_router)
 app.include_router(analytics_router)
+app.include_router(logistics_router)

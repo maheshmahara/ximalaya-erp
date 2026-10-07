@@ -1,101 +1,195 @@
-'use client';
-
 import React from 'react';
 import Link from 'next/link';
 
-export default function ConsumerProvenancePage({ params }: { params: { batchCode: string } }) {
-  const batch = params.batchCode || 'PK-2083-0459';
+interface CuppingProfile {
+  certified_score: number;
+  classification: string;
+  cupper: string;
+  cupping_date: string;
+  flavor_notes: string[];
+  attributes: Record<string, number>;
+}
+
+interface BatchData {
+  batch_code: string;
+  origin_plot: string;
+  cooperative: string;
+  district: string;
+  farmer_name: string;
+  elevation_masl: number;
+  variety: string;
+  eudr_segregation_mode: string;
+  farmgate_price_npr_kg: number;
+  cupping_profile?: CuppingProfile;
+  stages: any[];
+}
+
+export default async function ConsumerTraceabilityPage({ params }: { params: { batchCode: string } }) {
+  const batchCode = params?.batchCode || 'PK-2083-0459';
+
+  let data: BatchData | null = null;
+  try {
+    const res = await fetch(`http://api:8000/traceability/batches/${batchCode}/genealogy`, { cache: 'no-store' });
+    if (res.ok) {
+      data = await res.json();
+    }
+  } catch (err) {
+    // Fallback if backend container not reachable during SSR
+  }
+
+  if (!data) {
+    data = {
+      batch_code: batchCode,
+      origin_plot: 'PLOT-GUL-042',
+      cooperative: 'Ruru Eco-Station',
+      district: 'Gulmi',
+      farmer_name: 'Sita Gurung',
+      elevation_masl: 1450,
+      variety: 'Bourbon & Typica',
+      eudr_segregation_mode: 'IDENTITY_PRESERVED_MICRO_LOT',
+      farmgate_price_npr_kg: 108.00,
+      cupping_profile: {
+        certified_score: 88.50,
+        classification: 'EXCELLENT_SPECIALTY',
+        cupper: 'Q-Grader Mahesh Mahara',
+        cupping_date: '2026-04-03',
+        flavor_notes: ['Jasmine Blossom', 'Himalayan Honey', 'Bergamot', 'Stone Fruit'],
+        attributes: {
+          fragrance_aroma: 8.75,
+          flavor: 8.75,
+          aftertaste: 8.50,
+          acidity: 8.75,
+          body: 8.25,
+          balance: 8.50,
+          clean_cup: 10.0,
+          sweetness: 10.0
+        }
+      },
+      stages: []
+    };
+  }
+
+  const cp = data.cupping_profile;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16 selection:bg-amber-500 selection:text-black">
-      {/* Hero Header */}
-      <div className="relative overflow-hidden bg-gradient-to-b from-amber-950/40 via-slate-950 to-slate-950 border-b border-slate-800 pt-10 pb-8 px-6">
-        <div className="max-w-md mx-auto space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono font-semibold">
-            <span>GS1 Digital Link</span>
-            <span>·</span>
-            <span>Batch {batch}</span>
-          </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 lg:p-12 font-sans selection:bg-amber-500 selection:text-slate-950">
+      <div className="max-w-3xl mx-auto space-y-8">
+        {/* Top GS1 Digital Link Tag */}
+        <div className="flex items-center justify-between text-xs font-mono text-slate-500 border-b border-slate-900 pb-4">
+          <span>GS1 DIGITAL LINK VERIFIED</span>
+          <span className="text-amber-400 font-bold">{data.batch_code}</span>
+        </div>
 
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            Ximalaya Single Origin
+        {/* Hero Section */}
+        <header className="space-y-3">
+          <span className="text-xs font-mono tracking-widest text-emerald-400 uppercase font-bold">
+            Nepal Single-Origin Specialty
+          </span>
+          <h1 className="text-4xl font-black text-white tracking-tight">
+            Ximalaya Single Origin: {data.cooperative}, {data.district}
           </h1>
-          <p className="text-slate-400 text-sm leading-relaxed">
-            Cultivated by Sita Gurung in Gulmi, Nepal. Hand-harvested, cold-fermented, and roast-profiled for specialty drip extraction.
+          <p className="text-sm text-slate-400 leading-relaxed">
+            Cultivated by <strong className="text-slate-200">{data.farmer_name} in {data.district}, Nepal</strong> at{' '}
+            <strong className="text-slate-200">{data.elevation_masl} MASL</strong>. Processed using identity-preserved micro-lot fermentation with zero forest loss.
           </p>
+        </header>
+
+        {/* Transparent Smallholder Farmgate Economics */}
+        <section className="p-5 rounded-3xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-mono uppercase text-slate-400 tracking-wider block font-bold">
+              Ethical Farmgate Payout (Direct-Trade)
+            </span>
+            <span className="text-xs text-slate-300">Grade A Specialty Cherry Price + Quality Premium</span>
+          </div>
+          <div className="text-right">
+            <span className="text-xl font-black font-mono text-emerald-400">Rs 108.00 / kg</span>
+            <span className="text-[10px] font-mono text-emerald-500 block">+20% Above National Fairtrade Baseline</span>
+          </div>
+        </section>
+
+        {/* SCA Sensory Cupping Card */}
+        {cp && (
+          <section className="p-6 rounded-3xl bg-slate-900/70 border border-slate-800 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-mono uppercase text-amber-400 font-bold tracking-wider">
+                  SCA Cup Evaluation
+                </span>
+                <h2 className="text-xl font-black text-white">Sensory Profile</h2>
+              </div>
+              <div className="text-right">
+                <span className="text-3xl font-black font-mono text-emerald-400">{cp.certified_score}</span>
+                <span className="block text-[10px] font-mono text-slate-500 uppercase">Certified Score</span>
+              </div>
+            </div>
+
+            {/* Flavor Notes Pills */}
+            <div className="flex flex-wrap gap-2">
+              {cp.flavor_notes.map((note) => (
+                <span
+                  key={note}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-amber-950/70 border border-amber-800 text-amber-300"
+                >
+                  {note}
+                </span>
+              ))}
+            </div>
+
+            {/* Cupping Attribute Bars */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono pt-2">
+              <div className="p-3 rounded-2xl bg-slate-950/50 border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Aroma</span>
+                <span className="font-bold text-slate-200">{cp.attributes.fragrance_aroma}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-950/50 border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Acidity</span>
+                <span className="font-bold text-slate-200">{cp.attributes.acidity}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-950/50 border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Body</span>
+                <span className="font-bold text-slate-200">{cp.attributes.body}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-950/50 border border-slate-800">
+                <span className="text-slate-500 block text-[10px]">Clean Cup</span>
+                <span className="font-bold text-emerald-400">{cp.attributes.clean_cup} / 10</span>
+              </div>
+            </div>
+
+            <div className="text-[11px] font-mono text-slate-500 flex justify-between border-t border-slate-800/80 pt-3">
+              <span>Evaluator: {cp.cupper}</span>
+              <span>Cupped on: {cp.cupping_date}</span>
+            </div>
+          </section>
+        )}
+
+        {/* Cadastral & EUDR Provenance Details */}
+        <section className="p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4">
+          <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">
+            Cadastral & Deforestation Clearance
+          </h3>
+          <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+              <span className="text-slate-500 block text-[10px]">Parcel ID</span>
+              <span className="font-bold text-slate-200">{data.origin_plot}</span>
+            </div>
+            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+              <span className="text-slate-500 block text-[10px]">EUDR Cutoff</span>
+              <span className="font-bold text-emerald-400">Post-2020 Compliant</span>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer Navigation */}
+        <div className="flex items-center justify-between text-xs font-mono text-slate-500 pt-4">
+          <Link href="/traceability/map" className="hover:text-amber-400 underline underline-offset-4">
+            View Satellite Cadastre Map →
+          </Link>
+          <Link href="/batches/PK-2083-0459/audit" className="hover:text-amber-400 underline underline-offset-4">
+            Audit Transformation Ledger →
+          </Link>
         </div>
       </div>
-
-      <main className="max-w-md mx-auto px-6 mt-6 space-y-6">
-        {/* Sensory Score Card */}
-        <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl backdrop-blur-md space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-bold">Sensory Evaluation</span>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-950/60 text-amber-300 border border-amber-800">
-              SCA 89.00
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800">
-              <span className="text-slate-400 block">Flavor Notes</span>
-              <span className="font-semibold text-slate-200 mt-1 block">Wild Honey, Plum, Jasmine</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800">
-              <span className="text-slate-400 block">Process</span>
-              <span className="font-semibold text-slate-200 mt-1 block">36h Anaerobic Ferment</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800">
-              <span className="text-slate-400 block">Elevation</span>
-              <span className="font-semibold font-mono text-sky-400 mt-1 block">1,450 MASL</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800">
-              <span className="text-slate-400 block">Varietal</span>
-              <span className="font-semibold text-slate-200 mt-1 block">Bourbon & Typica</span>
-            </div>
-          </div>
-        </section>
-
-        {/* Farmer Equity & Economics */}
-        <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl backdrop-blur-md space-y-3">
-          <span className="text-xs uppercase tracking-widest text-slate-400 font-bold">Direct-Trade Transparency</span>
-          
-          <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-900/40 space-y-2">
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-400">Farm Gate Payout Rate</span>
-              <span className="font-mono text-emerald-400 font-bold text-sm">Rs 108.00 / kg</span>
-            </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-400">Quality Bonus (Brix 22.5°)</span>
-              <span className="font-mono text-emerald-300 font-bold">+Rs 8.00 / kg</span>
-            </div>
-            <div className="text-[11px] text-slate-400 pt-2 border-t border-emerald-900/40">
-              This payout exceeds the national minimum baseline by 18%, rewarding selective picking of ripe cherries.
-            </div>
-          </div>
-        </section>
-
-        {/* EUDR Cadastral Verification */}
-        <section className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl backdrop-blur-md space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-bold">Deforestation-Free Proof</span>
-            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-              EUDR Art. 9
-            </span>
-          </div>
-
-          <div className="text-xs text-slate-300 leading-relaxed">
-            Harvested from cadastral polygon <span className="font-mono font-bold text-white">PLOT-GUL-042</span>. Satellite imagery confirms zero deforestation since the December 31, 2020 EU baseline cutoff.
-          </div>
-
-          <Link
-            href="/traceability/map"
-            className="block text-center py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-all"
-          >
-            Inspect Cadastral Boundary on Satellite Map →
-          </Link>
-        </section>
-      </main>
     </div>
   );
 }

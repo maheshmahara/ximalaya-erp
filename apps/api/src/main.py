@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apps.api.src.modules.procurement.spatial_router import router as spatial_router
 from apps.api.src.modules.sales.router import router as sales_router
 from apps.api.src.modules.traceability.router import router as traceability_router
+from apps.api.src.modules.analytics.router import router as analytics_router
 
 app = FastAPI(
     title="Ximalaya Coffee ERP API",
@@ -25,3 +26,4 @@ async def healthz():
 app.include_router(spatial_router)
 app.include_router(sales_router)
 app.include_router(traceability_router)
+app.include_router(analytics_router)

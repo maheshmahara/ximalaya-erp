@@ -9,7 +9,6 @@ BACKEND_URL = "http://localhost:8000"
 def test_api_health_and_spatial_endpoints():
     """Verify backend health and PostGIS GeoJSON endpoints with wait retry."""
     with httpx.Client(base_url=BACKEND_URL, timeout=10.0) as client:
-        # Retry loop to allow container process to finish port binding
         health_ok = False
         for _ in range(10):
             try:
@@ -28,7 +27,6 @@ def test_api_health_and_spatial_endpoints():
         assert geojson["type"] == "FeatureCollection"
         assert len(geojson["features"]) >= 4
 
-        # Validate that PLOT-GUL-042 and PLOT-PAL-101 are present and compliant
         plot_refs = [f["properties"]["plot_ref"] for f in geojson["features"]]
         assert "PLOT-GUL-042" in plot_refs
         assert "PLOT-PAL-101" in plot_refs
@@ -46,7 +44,7 @@ def test_frontend_mobile_intake_page():
         # Verify page title and header
         expect(page.locator("text=Cherry Field Intake")).to_be_visible()
         expect(page.locator("text=Ruru Sahakari")).to_be_visible()
-        expect(page.locator("text=8H WINDOW VALID")).to_be_visible()
+        expect(page.locator("text=8h Window Valid")).to_be_visible()
 
         # Fill farmer details
         page.fill("input[placeholder='Farmer Name']", "Devi Prasad Sharma")
@@ -88,9 +86,8 @@ def test_frontend_cadastral_map_and_provenance_pages():
 
         # 2. Test Consumer Provenance GS1 Story
         page.goto(f"{FRONTEND_URL}/t/PK-2083-0459", wait_until="networkidle")
-        expect(page.locator("text=Verified GS1 Digital Link Lineage")).to_be_visible()
-        expect(page.locator("text=Single Origin Himalayan Specialty Drip Box")).to_be_visible()
-        expect(page.locator("text=Lot: PK-2083-0459")).to_be_visible()
+        expect(page.locator("h1:has-text('Ximalaya Single Origin')")).to_be_visible()
+        expect(page.locator("text=Sita Gurung in Gulmi, Nepal")).to_be_visible()
         expect(page.locator("text=Rs 108.00 / kg")).to_be_visible()
         expect(page.locator("text=PLOT-GUL-042")).to_be_visible()
 

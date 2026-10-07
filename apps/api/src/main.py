@@ -24,6 +24,7 @@ app.add_middleware(
 async def healthz():
     return {"status": "ok", "service": "ximalaya_api", "system": "operational"}
 
+# Include all module routers
 app.include_router(spatial_router)
 app.include_router(sales_router)
 app.include_router(traceability_router)

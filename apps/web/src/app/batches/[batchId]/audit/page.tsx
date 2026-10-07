@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 
 interface Stage {
   stage: string;
@@ -29,12 +30,11 @@ interface GenealogyData {
   stages: Stage[];
 }
 
-export function generateStaticParams() {
-  return [{ batchId: 'PK-2083-0459' }];
-}
+export default function BatchAuditPage() {
+  const params = useParams();
+  const rawBatchId = params?.batchId;
+  const batchId = Array.isArray(rawBatchId) ? rawBatchId[0] : (rawBatchId || 'PK-2083-0459');
 
-export default function BatchAuditPage({ params }: { params: { batchId: string } }) {
-  const batchId = params?.batchId || 'PK-2083-0459';
   const [data, setData] = useState<GenealogyData | null>(null);
 
   useEffect(() => {

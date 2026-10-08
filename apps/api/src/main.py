@@ -8,6 +8,7 @@ from apps.api.src.modules.logistics.router import router as logistics_router
 from apps.api.src.core.auth_router import router as auth_router
 from apps.api.src.modules.roasting.ws_router import ws_router
 from apps.api.src.modules.roasting.router import router as roasting_router
+from apps.api.src.modules.packaging.router import router as packaging_router
 
 app = FastAPI(
     title="Ximalaya Coffee ERP API",
@@ -36,3 +37,4 @@ app.include_router(logistics_router)
 app.include_router(auth_router)
 app.include_router(ws_router)
 app.include_router(roasting_router)
+app.include_router(packaging_router)

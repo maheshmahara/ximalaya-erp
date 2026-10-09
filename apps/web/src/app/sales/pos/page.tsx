@@ -41,7 +41,6 @@ export default function WholesaleBillingPOS() {
     fetchStock();
   }, [sku]);
 
-  // Client-side fiscal preview
   const subtotal = Number((quantity * unitPrice).toFixed(2));
   const taxable = Math.max(0, Number((subtotal - discountAmount).toFixed(2)));
   const vat = Number((taxable * 0.13).toFixed(2));
@@ -78,7 +77,7 @@ export default function WholesaleBillingPOS() {
         throw new Error(data.detail || 'Invoice issuance failed');
       }
       setGeneratedInvoice(data);
-      fetchStock(); // Refresh updated warehouse stock
+      fetchStock();
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -89,7 +88,6 @@ export default function WholesaleBillingPOS() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 lg:p-10 font-sans">
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Navigation Breadcrumb */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2 text-xs font-mono text-slate-400">
             <Link href="/dashboard" className="hover:text-amber-400">Dashboard</Link>
@@ -104,7 +102,6 @@ export default function WholesaleBillingPOS() {
           </span>
         </div>
 
-        {/* Header Bar */}
         <header className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black text-white tracking-tight">Wholesale Fiscal Dispatch</h1>
@@ -126,7 +123,6 @@ export default function WholesaleBillingPOS() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Form */}
           <form onSubmit={handleIssueInvoice} className="lg:col-span-2 p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4">
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">Buyer & Item Specifics</h2>
 
@@ -213,7 +209,6 @@ export default function WholesaleBillingPOS() {
             </button>
           </form>
 
-          {/* Fiscal Summary Card */}
           <div className="space-y-6">
             <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
               <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">Fiscal Calculation (NPR)</h2>

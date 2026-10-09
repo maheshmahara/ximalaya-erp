@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 from typing import List
 from apps.api.src.modules.logistics.inventory_service import WarehouseInventoryService
 from apps.api.src.modules.logistics.dds_service import EUDRDueDiligenceService
+from apps.api.src.modules.logistics.manifest_pdf import generate_dispatch_manifest_pdf
 
 router = APIRouter(prefix="/logistics", tags=["Warehouse & Logistics"])
 
@@ -52,3 +53,26 @@ async def generate_due_diligence_statement(req: DDSGenerationRequest):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/dispatch/{dispatch_ref}/manifest.pdf")
+async def download_dispatch_manifest(dispatch_ref: str):
+    manifest_data = {
+        "dispatch_ref": dispatch_ref,
+        "dispatch_date": "2026-04-03",
+        "dds_ref": "DDS-2026-NPL-0042",
+        "origin_warehouse": "BIN-KTM-WH1 (Central Logistics Terminal)",
+        "carrier_name": "Himalayan Air Cargo / DHL Global Forwarding",
+        "consignee_name": "Nordic Specialty Coffee Roasters ApS",
+        "destination_country": "Denmark",
+        "sku": "SKU-DRIP-GUL-7X10G",
+        "total_units": 140,
+        "net_mass_kg": 9.8,
+        "gtin": "08901234567890",
+        "hs_code": "0901.21"
+    }
+    pdf_bytes = generate_dispatch_manifest_pdf(manifest_data)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={dispatch_ref}.pdf"}
+    )

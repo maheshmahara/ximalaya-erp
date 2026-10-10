@@ -34,6 +34,14 @@ export default function RoastingLiveCockpit() {
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Settlement Modal State
+  const [showModal, setShowModal] = useState(false);
+  const [greenWeight, setGreenWeight] = useState<number>(10.0);
+  const [roastedWeight, setRoastedWeight] = useState<number>(8.5);
+  const [profileName, setProfileName] = useState('Nordic Light #45');
+  const [settlementResult, setSettlementResult] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   useEffect(() => {
     let ws: WebSocket | null = null;
     let isUnmounted = false;
@@ -48,7 +56,6 @@ export default function RoastingLiveCockpit() {
       ws.onclose = () => {
         if (!isUnmounted) {
           setIsConnected(false);
-          // Auto-reconnect loop after 2 seconds
           reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
         }
       };
@@ -91,6 +98,33 @@ export default function RoastingLiveCockpit() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const calculatedShrinkage = greenWeight > 0 && roastedWeight <= greenWeight
+    ? Number((((greenWeight - roastedWeight) / greenWeight) * 100).toFixed(2))
+    : 0;
+
+  const handleSettleBatch = async () => {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('http://localhost:8000/roasting/drop-settlement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batch_id: data.batch_id,
+          green_charge_weight_kg: Number(greenWeight),
+          roasted_drop_weight_kg: Number(roastedWeight),
+          roast_profile_name: profileName,
+          roaster_model: 'Electric Drum (ESP32 / Artisan)'
+        })
+      });
+      const resData = await res.json();
+      setSettlementResult(resData);
+    } catch (err) {
+      console.error('Settlement error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 lg:p-10 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -104,11 +138,19 @@ export default function RoastingLiveCockpit() {
             <span className="text-amber-400">ESP32 Electric Live Stream</span>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-            <span className="text-xs font-mono font-bold text-slate-300">
-              {isConnected ? 'ESP32 / Artisan Online' : 'Reconnecting to Stream...'}
-            </span>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all shadow-lg flex items-center gap-1.5"
+            >
+              <span>Drop & Settle Batch</span>
+            </button>
+            <div className="flex items-center space-x-2 pl-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+              <span className="text-xs font-mono font-bold text-slate-300">
+                {isConnected ? 'ESP32 / Artisan Online' : 'Reconnecting...'}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -193,6 +235,107 @@ export default function RoastingLiveCockpit() {
             })}
           </div>
         </div>
+
+        {/* Drop Settlement Modal */}
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-5 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Drop Batch & Settle Corridor</h3>
+                  <p className="text-xs text-slate-400">Batch: {data.batch_id}</p>
+                </div>
+                <button
+                  onClick={() => { setShowModal(false); setSettlementResult(null); }}
+                  className="text-slate-400 hover:text-white text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {!settlementResult ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Green Charge (kg)</label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        value={greenWeight}
+                        onChange={(e) => setGreenWeight(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Roasted Drop (kg)</label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        value={roastedWeight}
+                        onChange={(e) => setRoastedWeight(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Profile Preset</label>
+                    <select
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                    >
+                      <option value="Nordic Light #45">Nordic Light Roast #45 (14.0% - 15.5%)</option>
+                      <option value="Omniroast Filter & Espresso">Omniroast Filter & Espresso (15.5% - 16.5%)</option>
+                      <option value="Full Medium">Full Medium #35 (16.0% - 17.0%)</option>
+                    </select>
+                  </div>
+
+                  {/* Calculated Shrinkage Preview */}
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono">
+                    <span className="text-slate-400">Shrinkage Loss:</span>
+                    <span className={`text-base font-bold ${
+                      calculatedShrinkage >= 13.5 && calculatedShrinkage <= 17.0
+                        ? 'text-emerald-400'
+                        : 'text-rose-400'
+                    }`}>
+                      {calculatedShrinkage}%
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={handleSettleBatch}
+                    disabled={isSubmitting}
+                    className="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+                  >
+                    {isSubmitting ? 'Logging Settlement...' : 'Confirm Drop & Post to Ledger'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-2xl bg-emerald-950/50 border border-emerald-700/60 text-center space-y-2">
+                    <span className="text-xs font-mono text-emerald-400 block font-bold">
+                      ✓ BATCH SETTLED SUCCESSFULLY
+                    </span>
+                    <div className="text-2xl font-black font-mono text-white">
+                      {settlementResult.shrinkage_pct}% Shrinkage
+                    </div>
+                    <span className="inline-block px-3 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-900 border border-emerald-600 text-emerald-200">
+                      {settlementResult.corridor_status}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => { setShowModal(false); setSettlementResult(null); }}
+                    className="w-full py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all"
+                  >
+                    Close Window
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

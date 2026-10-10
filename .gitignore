@@ -13,3 +13,6 @@ caddy_data/
 caddy_config/
 pgdata/
 .DS_Store
+
+# Local database backups
+backups/

@@ -1,16 +1,17 @@
-#!/bin/bash
-set -eo pipefail
+#!/usr/bin/env bash
+set -euo pipefail
 
-BACKUP_DIR="/backups"
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_FILE="${BACKUP_DIR}/ximalaya_db_${TIMESTAMP}.sql.gz"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+BACKUP_FILE="${PROJECT_ROOT}/backups/ximalaya_erp_$(date +%Y_m%d+HDMMSS).sql.gz"
 
-mkdir -p "${BACKUP_DIR}"
+mkdir -p "${PROJECT_ROOT}/backups"
 
-echo "[$(date)] Starting PostGIS database backup..."
-pg_dump -h postgres -U postgres -d ximalaya_db | gzip > "${BACKUP_FILE}"
-echo "[$(date)] Backup completed successfully: ${BACKUP_FILE} ($(du -sh "${BACKUP_FILE}" | cut -f1))"
+PG_USER=$(docker compose -f "${PROJECT_ROOT}/infra/docker-compose.prod.yml" exec -T postgres sh -c 'echo "${POSTGRES_USER:-postgres}"' | tr -d '\r')
+PG_DB=$(docker compose -f "${PROJECT_ROOT}/infra/docker-compose.prod.yml" exec -T postgres sh -c 'echo "${POSTGRES_DB:-ximalaya_erp}"' | tr -d '\r')
 
-# Retention policy: Remove backups older than 14 days
-find "${BACKUP_DIR}" -type f -name "ximalaya_db_*.sql.gz" -mtime +14 -delete
-echo "[$(date)] Rotational cleanup executed (14-day retention)."
+echo "📦 Creating PostGIS database backup (User: ${PG_USER}, DB: ${PG_DB})..."
+docker compose -f "${PROJECT_ROOT}/infra/docker-compose.prod.yml" exec -T postgres pg_dump -U "${PG_USER}" -d "${PG_DB}" | gzip > "${BACKUP_FILE}"
+
+echo "✅ Backup successfully saved to: ${BACKUP_FILE}"
+ls -lh "${BACKUP_FILE}"

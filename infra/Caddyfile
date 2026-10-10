@@ -1,0 +1,41 @@
+{
+    email admin@ximalayacoffee.com
+}
+
+{$DOMAIN:localhost} {
+    encode gzip zstd
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # API Backend & WebSockets
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy api:8000
+    }
+
+    # Roasting WebSocket Stream
+    handle /ws/* {
+        reverse_proxy api:8000 {
+            header_up Host {host}
+            header_up Upgrade {>Upgrade}
+            header_up Connection {>Connection}
+        }
+    }
+
+    # Backend Specific Endpoints
+    @backend_api path /healthz /docs /openapi.json /analytics/summary /procurement/* /roasting/* /packaging/* /sales/invoices* /logistics/inventory/* /logistics/export/* /logistics/dispatch/*.pdf
+    handle @backend_api {
+        reverse_proxy api:8000
+    }
+
+    # Next.js Web Frontend
+    handle {
+        reverse_proxy web:3000
+    }
+}

@@ -1,0 +1,107 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: ximalaya_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ximalaya_erp
+      POSTGRES_USER: xcc_admin
+      POSTGRES_PASSWORD: xcc_dev_pass_2083
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xcc_admin -d ximalaya_erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ximalaya_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: ximalaya_api
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://xcc_admin:xcc_dev_pass_2083@postgres:5432/ximalaya_erp
+      REDIS_URL: redis://redis:6379/0
+      SMS_TOKEN: mock_nepal_sms_token
+      PYTHONPATH: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ..:/workspace
+
+  workers:
+    build:
+      context: ../apps/workers
+      dockerfile: Dockerfile
+    container_name: ximalaya_workers
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://xcc_admin:xcc_dev_pass_2083@postgres:5432/ximalaya_erp
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../apps/workers:/app
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    container_name: ximalaya_web
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - api
+    volumes:
+      - ../apps/web:/app
+      - /app/node_modules
+      - /app/.next
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: ximalaya-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

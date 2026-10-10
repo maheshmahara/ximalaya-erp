@@ -1,207 +1,242 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import '@/styles/tokens.css';
+import React, { useState } from 'react';
+import Link from 'next/link';
 
-export default function PackagingCostingDashboard() {
-  const [unitsToPack, setUnitsToPack] = useState(100);
-  const [skuType, setSkuType] = useState<'DRIP_BOX_7PCS' | 'WHOLE_BEAN_1KG'>('DRIP_BOX_7PCS');
+export default function PackagingCockpit() {
+  const [parentRoastBatch, setParentRoastBatch] = useState('BATCH-ESP32-001');
+  const [pkgBatchId, setPkgBatchId] = useState('PKG-2083-0459-D1');
+  const [roastedInputKg, setRoastedInputKg] = useState<number>(10.0);
+  const [boxesProduced, setBoxesProduced] = useState<number>(140);
+  const [damagedSachets, setDamagedSachets] = useState<number>(3);
+  const [residualO2, setResidualO2] = useState<number>(0.32);
 
-  // Exact BOM component rates from Ximalaya Drip Costing Template
-  const bomComponents = [
-    { item: 'Filter Paper Bag (7 pcs @ Rs 30)', costPerBox: 210.0 },
-    { item: 'Filter Sticker Print (7 pcs @ Rs 4)', costPerBox: 28.0 },
-    { item: 'Die-line Box with Print (1 pc)', costPerBox: 18.0 },
-    { item: 'Roasted Specialty Coffee (84g @ Rs 3/g)', costPerBox: 252.0 },
-  ];
+  const [submittedRun, setSubmittedRun] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const cpPerBox = 508.0;
-  const cpPerBag = 72.57;
+  // Derived metrics
+  const netFinishedKg = Number(((boxesProduced * 70.0) / 1000.0).toFixed(2));
+  const totalSachets = (boxesProduced * 7) + damagedSachets;
+  const rejectPct = totalSachets > 0 ? Number(((damagedSachets / totalSachets) * 100).toFixed(2)) : 0;
+  const isO2Compliant = residualO2 <= 0.50;
 
-  // Real-time BOM aggregate calculations
-  const totalCoffeeUsedKg = useMemo(() => {
-    return Number(((unitsToPack * 84) / 1000).toFixed(2));
-  }, [unitsToPack]);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setErrorMsg(null);
 
-  const totalRunCostNpr = useMemo(() => {
-    return unitsToPack * cpPerBox;
-  }, [unitsToPack]);
+    try {
+      const res = await fetch('http://localhost:8000/packaging/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          packaging_batch_id: pkgBatchId,
+          parent_roast_batch_id: parentRoastBatch,
+          roasted_coffee_input_kg: Number(roastedInputKg),
+          finished_boxes_produced: Number(boxesProduced),
+          residual_o2_reading_pct: Number(residualO2),
+          damaged_sachets_count: Number(damagedSachets)
+        })
+      });
 
-  // Channel price quotations (matching spreadsheet models)
-  const channels = [
-    { name: 'Wholesale / Distributor', margin: '20%', delivery: 20, mrp: 750, net: 663.72, profit: 135.72 },
-    { name: 'Retail Supermarket', margin: '35%', delivery: 0, mrp: 890, net: 787.61, profit: 279.61 },
-    { name: 'Online Marketplace', margin: '30%', delivery: 100, mrp: 1150, net: 1017.70, profit: 307.93 },
-    { name: 'Corporate Gift Orders', margin: '25%', delivery: 50, mrp: 850, net: 752.21, profit: 194.21 },
-  ];
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Packaging run submission failed');
+      }
+      setSubmittedRun(data);
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen relative text-neutral-900 dark:text-neutral-100 p-6 md:p-10 font-sans">
-      <div className="ambient-glow" />
-
-      <main className="max-w-6xl mx-auto space-y-6 relative z-10">
-        {/* Header */}
-        <header className="flex justify-between items-center pb-4 border-b border-neutral-200/50 dark:border-neutral-800/50">
-          <div>
-            <div className="text-xs font-mono uppercase tracking-wider text-neutral-400">
-              Processing Subsidiary • Finished Goods Floor
-            </div>
-            <h1 className="text-3xl font-extrabold tracking-tight mt-0.5">
-              Packaging Run & BOM Costing
-            </h1>
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 lg:p-10 font-sans">
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* Navigation Breadcrumb */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-xs font-mono text-slate-400">
+            <Link href="/dashboard" className="hover:text-amber-400">Dashboard</Link>
+            <span>/</span>
+            <Link href="/roasting/live" className="hover:text-amber-400">Roasting</Link>
+            <span>/</span>
+            <span className="text-amber-400">Packaging & Nitrogen QA</span>
           </div>
-          <div className="text-right">
-            <span className="text-xs font-mono px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
-              Base Cost: Rs 508.00 / Box
-            </span>
+
+          <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold border ${
+            isO2Compliant
+              ? 'bg-emerald-950/80 border-emerald-700 text-emerald-300'
+              : 'bg-rose-950/80 border-rose-700 text-rose-300'
+          }`}>
+            {isO2Compliant ? 'O2 Within Spec (<= 0.50%)' : 'O2 Specification Breach'}
+          </span>
+        </div>
+
+        {/* Header Bar */}
+        <header className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-black text-white tracking-tight">Ultrasonic Drip Bag Line</h1>
+            <p className="text-sm text-slate-400 mt-1">
+              Nitrogen Flush Modified Atmosphere Packaging (MAP) & QA Gate
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs font-mono">
+            <div className="p-3 rounded-2xl bg-slate-800/40 border border-slate-800">
+              <span className="text-slate-500 block text-[10px]">Net Output</span>
+              <span className="text-xl font-bold text-amber-400">{netFinishedKg} kg</span>
+            </div>
+            <div className="p-3 rounded-2xl bg-slate-800/40 border border-slate-800">
+              <span className="text-slate-500 block text-[10px]">Residual O2</span>
+              <span className={`text-xl font-bold ${isO2Compliant ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {residualO2}%
+              </span>
+            </div>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          {/* Card 1: BOM Configuration & Coffee Draw (5 cols) */}
-          <div className="md:col-span-5 glass-panel p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-mono font-bold uppercase text-neutral-400">
-                Packaging Order Spec
-              </span>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded font-bold bg-neutral-200/60 dark:bg-neutral-800/60">
-                LOT: PK-2083-0458
-              </span>
-            </div>
+        {errorMsg && (
+          <div className="p-4 rounded-2xl bg-rose-950/60 border border-rose-700/80 text-rose-300 text-xs font-mono">
+            ⚠️ {errorMsg}
+          </div>
+        )}
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-neutral-400 block mb-1">SKU Format</label>
-                <div className="grid grid-cols-2 gap-2 text-xs font-bold font-mono">
-                  <button
-                    onClick={() => setSkuType('DRIP_BOX_7PCS')}
-                    className={`py-2 px-3 rounded-xl border transition-all ${
-                      skuType === 'DRIP_BOX_7PCS'
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        : 'border-neutral-200/60 dark:border-neutral-800/60 text-neutral-400'
-                    }`}
-                  >
-                    Drip Box (7 pcs)
-                  </button>
-                  <button
-                    onClick={() => setSkuType('WHOLE_BEAN_1KG')}
-                    className={`py-2 px-3 rounded-xl border transition-all ${
-                      skuType === 'WHOLE_BEAN_1KG'
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        : 'border-neutral-200/60 dark:border-neutral-800/60 text-neutral-400'
-                    }`}
-                  >
-                    Whole Bean (1 kg)
-                  </button>
-                </div>
-              </div>
+        {/* Form and Stats Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <form onSubmit={handleSubmit} className="lg:col-span-2 p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">Packaging Run Input</h2>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-medium text-neutral-400 block mb-1">Units to Pack</label>
+                <label className="text-xs text-slate-400 block mb-1">Packaging Lot Code</label>
                 <input
-                  type="number"
-                  value={unitsToPack}
-                  onChange={(e) => setUnitsToPack(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full text-2xl font-black font-mono bg-white/50 dark:bg-neutral-900/50 border border-neutral-200/50 dark:border-neutral-800/50 rounded-xl p-2.5 focus:outline-none"
+                  type="text"
+                  value={pkgBatchId}
+                  onChange={(e) => setPkgBatchId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                  required
                 />
               </div>
 
-              {/* Bulk Roast Allocation */}
-              <div className="p-3.5 rounded-xl bg-white/40 dark:bg-neutral-900/40 border border-neutral-200/50 dark:border-neutral-800/50 space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-400">Bulk Roasted Coffee Required:</span>
-                  <span className="font-mono font-bold">{totalCoffeeUsedKg} kg</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-400">Total Landed Production Cost:</span>
-                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                    Rs {totalRunCostNpr.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Itemized BOM Table */}
-              <div className="pt-2">
-                <span className="text-[11px] font-mono uppercase text-neutral-400 font-semibold block mb-2">
-                  Bill of Materials Breakdown
-                </span>
-                <div className="space-y-1.5 text-xs">
-                  {bomComponents.map((b) => (
-                    <div key={b.item} className="flex justify-between py-1 border-b border-neutral-200/30 dark:border-neutral-800/30">
-                      <span className="text-neutral-500">{b.item}</span>
-                      <span className="font-mono font-medium">Rs {b.costPerBox.toFixed(2)}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between pt-1 font-bold">
-                    <span>Landed Cost Price per Box</span>
-                    <span className="font-mono text-emerald-600 dark:text-emerald-400">Rs {cpPerBox.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-[11px] text-neutral-400">
-                    <span>Effective Cost per Drip Bag</span>
-                    <span className="font-mono">Rs {cpPerBag.toFixed(2)} / bag</span>
-                  </div>
-                </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Parent Roast Batch</label>
+                <input
+                  type="text"
+                  value={parentRoastBatch}
+                  onChange={(e) => setParentRoastBatch(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                  required
+                />
               </div>
             </div>
-          </div>
 
-          {/* Card 2: Multi-Channel Sales Pricing & Margin Gates (7 cols) */}
-          <div className="md:col-span-7 glass-panel p-6 flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-xs font-mono font-bold uppercase text-neutral-400">
-                  Channel Pricing Matrix & Margins
-                </span>
-                <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                  13% VAT Computed
-                </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Roasted Coffee Input (kg)</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={roastedInputKg}
+                  onChange={(e) => setRoastedInputKg(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                  required
+                />
               </div>
 
-              <div className="space-y-3 my-2">
-                {channels.map((ch) => (
-                  <div
-                    key={ch.name}
-                    className="p-3.5 rounded-xl bg-white/40 dark:bg-neutral-900/40 border border-neutral-200/50 dark:border-neutral-800/50 space-y-2"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-xs">{ch.name}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-neutral-200/60 dark:bg-neutral-800/60">
-                        Target Margin: {ch.margin}
-                      </span>
-                    </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Boxes Produced (7x10g / box)</label>
+                <input
+                  type="number"
+                  value={boxesProduced}
+                  onChange={(e) => setBoxesProduced(parseInt(e.target.value) || 0)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                  required
+                />
+              </div>
+            </div>
 
-                    <div className="grid grid-cols-3 gap-2 text-xs font-mono">
-                      <div>
-                        <span className="text-[10px] text-neutral-400 block uppercase">Final MRP</span>
-                        <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                          Rs {ch.mrp}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-neutral-400 block uppercase">Net (ex-VAT)</span>
-                        <span className="text-sm font-bold">Rs {ch.net.toFixed(2)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-neutral-400 block uppercase">Profit / Box</span>
-                        <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                          +Rs {ch.profit.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Damaged / Purged Sachets</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={damagedSachets}
+                  onChange={(e) => setDamagedSachets(parseInt(e.target.value) || 0)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Residual O2 Analyzer Reading (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.0"
+                  max="21.0"
+                  value={residualO2}
+                  onChange={(e) => setResidualO2(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
+                  required
+                />
               </div>
             </div>
 
             <button
-              onClick={() => alert(`Issued GS1 Pack Lot PK-2083-0458 for ${unitsToPack} units. Stock booked to Finished Goods.`)}
-              className="w-full py-3.5 mt-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold text-sm shadow-md transition-all"
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-xl mt-4"
             >
-              Authorize Packaging Run & Print GS1 Serialization Tags
+              {isSubmitting ? 'Verifying & Posting...' : 'Commit Packaging Lot & Clear QA'}
             </button>
+          </form>
+
+          {/* Verification & Real-time QA Card */}
+          <div className="space-y-6">
+            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">Mass-Balance Check</h2>
+              
+              <div className="space-y-2 text-xs font-mono">
+                <div className="flex justify-between py-1.5 border-b border-slate-800">
+                  <span className="text-slate-400">Total Roasted Input:</span>
+                  <span className="font-bold text-white">{roastedInputKg} kg</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-800">
+                  <span className="text-slate-400">Finished Product Net:</span>
+                  <span className="font-bold text-amber-400">{netFinishedKg} kg</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-800">
+                  <span className="text-slate-400">Process Retention:</span>
+                  <span className="font-bold text-emerald-400">
+                    {roastedInputKg > 0 ? ((netFinishedKg / roastedInputKg) * 100).toFixed(1) : 0}%
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-slate-400">Sachet Defect Rate:</span>
+                  <span className={`font-bold ${rejectPct <= 1.5 ? 'text-slate-200' : 'text-rose-400'}`}>
+                    {rejectPct}% (Max 1.5%)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {submittedRun && (
+              <div className="p-5 rounded-3xl bg-emerald-950/60 border border-emerald-700/80 space-y-2">
+                <span className="text-xs font-mono font-bold text-emerald-400 block">
+                  ✓ RUN COMMITTED TO FINISHED GOODS
+                </span>
+                <p className="text-xs text-emerald-200 leading-relaxed font-mono">
+                  Batch <strong>{submittedRun.packaging_batch_id}</strong> cleared with status{' '}
+                  <strong className="text-white">{submittedRun.status}</strong>. Residual O2:{' '}
+                  <strong className="text-emerald-400">{submittedRun.residual_o2_reading_pct}%</strong>.
+                </p>
+              </div>
+            )}
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

@@ -1,38 +1,71 @@
 import hmac
 import hashlib
+import json
 from decimal import Decimal
-from uuid import UUID
-from fastapi import APIRouter, Header, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from typing import Dict, Any
+from fastapi import APIRouter, Header, HTTPException, status, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from apps.api.src.core.database import get_db_session
+from apps.api.src.modules.roasting.schemas import CuppingScoresheetSubmission, CuppingResultResponse
+from apps.api.src.modules.roasting.service import RoastingCuppingEngine
 
-router = APIRouter(prefix="/integrations/xros", tags=["Roaster Integrations"])
+router = APIRouter(prefix="/integrations/xros", tags=["XROS Roaster Integration"])
 
-class XrosRoastDropPayload(BaseModel):
-    roast_batch_code: str
-    green_lot_id: UUID
-    green_charged_weight_kg: Decimal = Field(..., gt=0)
-    roasted_dropped_weight_kg: Decimal = Field(..., gt=0)
-    charge_temp_celsius: Decimal
-    drop_temp_celsius: Decimal
-    roast_duration_seconds: int
-    agtron_color_score: Decimal
+XROS_WEBHOOK_SECRET = "xros_live_secret_nepal_2083"
 
-def verify_hmac(raw_body: bytes, signature: str, secret: str) -> bool:
-    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+@router.post("/roast-drop", status_code=status.HTTP_200_OK)
+async def handle_xros_roast_drop(
+    payload: Dict[str, Any],
+    x_xros_signature: str = Header(None, alias="X-XROS-Signature"),
+    db: AsyncSession = Depends(get_db_session)
+):
+    if not x_xros_signature:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing HMAC signature header X-XROS-Signature."
+        )
 
-@router.post("/roast")
-async def ingest_xros_roast(request: Request, payload: XrosRoastDropPayload, x_xros_signature: str = Header(..., alias="X-XROS-Signature")):
-    raw_body = await request.body()
-    ROASTER_SECRET = "XIMALAYA_XROS_WEBHOOK_SECRET_KEY_PROD"
-    if not verify_hmac(raw_body, x_xros_signature, ROASTER_SECRET):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid HMAC Signature")
+    raw_body = json.dumps(payload, separators=(',', ':')).encode('utf-8')
+    expected_sig = hmac.new(
+        XROS_WEBHOOK_SECRET.encode('utf-8'),
+        raw_body,
+        hashlib.sha256
+    ).hexdigest()
 
-    shrinkage = ((payload.green_charged_weight_kg - payload.roasted_dropped_weight_kg) / payload.green_charged_weight_kg) * Decimal("100.00")
-    qa_hold = not (Decimal("13.50") <= shrinkage <= Decimal("17.00"))
+    if not hmac.compare_digest(f"sha256={expected_sig}", x_xros_signature):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid cryptographic HMAC signature."
+        )
+
+    # 13.5% - 17.0% Shrinkage Corridor Validation
+    charged_weight = Decimal(str(payload.get("green_charged_weight_kg", 0)))
+    dropped_weight = Decimal(str(payload.get("roasted_dropped_weight_kg", 0)))
+
+    if charged_weight <= 0:
+        raise HTTPException(status_code=400, detail="Invalid charged weight.")
+
+    shrinkage_pct = ((charged_weight - dropped_weight) / charged_weight) * Decimal("100.00")
+    qa_hold = not (Decimal("13.50") <= shrinkage_pct <= Decimal("17.00"))
+
+    # Update or flag batch
     return {
-        "roast_batch_code": payload.roast_batch_code,
-        "shrinkage_pct": f"{shrinkage:.2f}%",
+        "status": "ACCEPTED",
+        "batch_code": payload.get("roast_batch_code"),
+        "shrinkage_pct": float(shrinkage_pct.quantize(Decimal("0.01"))),
         "qa_hold": qa_hold,
-        "status": "HOLD_PENDING_REVIEW" if qa_hold else "STAGED_FOR_DEGASSING"
     }
+
+@router.post("/cupping", response_model=CuppingResultResponse, status_code=status.HTTP_201_CREATED)
+async def submit_cupping_scoresheet(
+    payload: CuppingScoresheetSubmission,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """
+    SCA Digital Cupping Evaluation:
+    Evaluates 10-metric scoresheet and routes batch to Specialty (>=84),
+    Estate Grade 1 (80-83.75), or Commercial Blend (<80).
+    """
+    engine = RoastingCuppingEngine(db)
+    return await engine.submit_cupping_scoresheet(payload)

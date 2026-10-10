@@ -57,7 +57,7 @@ CREATE TABLE intake_lots (
     assigned_grade VARCHAR(8) NOT NULL,
     rate_per_kg_npr NUMERIC(14, 2) NOT NULL,
     total_payout_npr NUMERIC(14, 2) GENERATED ALWAYS AS ((gross_weight_kg - tare_weight_kg) * rate_per_kg_npr) STORED,
-    pulp_by_deadline TIMESTAMPTZ GENERATED ALWAYS AS (harvest_timestamp + INTERVAL '8 hours') STORED,
+    pulp_by_deadline TIMESTAMPTZ,
     status VARCHAR(32) DEFAULT 'INTAKE_APPROVED',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

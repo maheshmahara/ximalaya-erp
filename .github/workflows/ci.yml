@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - Ximalaya ERP
+name: Ximalaya ERP CI/CD Engine
 
 on:
   push:
@@ -7,49 +7,78 @@ on:
     branches: [ develop, main ]
 
 jobs:
-  backend-compliance-tests:
-    name: Backend Test Suite (Pytest)
+  backend-test:
+    name: Backend Test Suite (FastAPI + PostGIS)
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: ximalaya_erp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
-      - name: Install Test Dependencies
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest anyio pydantic
+          if [ -f apps/api/requirements.txt ]; then pip install -r apps/api/requirements.txt; fi
+          pip install pytest httpx playwright starlette reportlab shapely
 
-      - name: Run Core Domain Math & Rule Tests
+      - name: Run Test Battery (39 Integration Tests)
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/ximalaya_erp
+          REDIS_URL: redis://localhost:6379/0
+          PYTHONPATH: .
         run: |
           pytest apps/api/tests -v
 
   frontend-build:
-    name: Frontend Typecheck & Build (Next.js)
+    name: Frontend Compilation (Next.js 14)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/web/package.json
 
-      - name: Install Web Dependencies
-        run: |
-          cd apps/web
-          npm install --legacy-peer-deps
+      - name: Install Frontend Dependencies
+        working-directory: apps/web
+        run: npm ci
 
-      - name: Build Next.js Production Bundle
-        env:
-          NEXT_PUBLIC_API_URL: http://localhost:8000
-        run: |
-          cd apps/web
-          npm run build
+      - name: Verify Strict Next.js Production Build
+        working-directory: apps/web
+        run: npm run build

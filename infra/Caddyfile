@@ -1,0 +1,49 @@
+{
+    email admin@ximalayacoffee.com
+    admin off
+}
+
+# Production Domain Configuration
+# Replace {$DOMAIN:erp.ximalayacoffee.com} with your active domain or localhost
+{$DOMAIN:localhost} {
+    encode gzip zstd
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # API Backend & WebSockets
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy api:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Roasting WebSocket Stream
+    handle /ws/* {
+        reverse_proxy api:8000 {
+            header_up Host {host}
+            header_up Upgrade {>Upgrade}
+            header_up Connection {>Connection}
+        }
+    }
+
+    # Direct Backend Endpoints (Analytics, Sales, Logistics, Health)
+    @backend_paths path /analytics/* /sales/* /logistics/* /procurement/* /roasting/* /packaging/* /traceability/* /healthz /docs /openapi.json
+    handle @backend_paths {
+        reverse_proxy api:8000
+    }
+
+    # Next.js Web Frontend
+    handle {
+        reverse_proxy web:3000
+    }
+}

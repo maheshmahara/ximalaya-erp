@@ -1,10 +1,7 @@
 {
     email admin@ximalayacoffee.com
-    admin off
 }
 
-# Production Domain Configuration
-# Replace {$DOMAIN:erp.ximalayacoffee.com} with your active domain or localhost
 {$DOMAIN:localhost} {
     encode gzip zstd
 
@@ -19,12 +16,7 @@
     # API Backend & WebSockets
     handle /api/* {
         uri strip_prefix /api
-        reverse_proxy api:8000 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-        }
+        reverse_proxy api:8000
     }
 
     # Roasting WebSocket Stream
@@ -36,9 +28,9 @@
         }
     }
 
-    # Direct Backend Endpoints (Analytics, Sales, Logistics, Health)
-    @backend_paths path /analytics/* /sales/* /logistics/* /procurement/* /roasting/* /packaging/* /traceability/* /healthz /docs /openapi.json
-    handle @backend_paths {
+    # Backend Specific Endpoints
+    @backend_api path /healthz /docs /openapi.json /analytics/summary /procurement/* /roasting/* /packaging/* /sales/invoices* /logistics/inventory/* /logistics/export/* /logistics/dispatch/*.pdf
+    handle @backend_api {
         reverse_proxy api:8000
     }
 

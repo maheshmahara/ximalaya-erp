@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Ximalaya Coffee ERP - PostGIS Micro-Terroir & Cadastral Plot Seeder
-Populates authentic coffee-growing parcels across Gulmi, Palpa, Nuwakot, 
-and Kavre with high-precision PostGIS geometries for EUDR DDS compliance.
+Populates operating entity, suppliers, and farm plots with real PostGIS
+geometries for authentic Himalayan specialty terroirs and EUDR compliance.
 """
 
 import os
@@ -10,7 +10,6 @@ import re
 import sys
 import uuid
 import psycopg2
-from psycopg2.extras import execute_values
 
 RAW_DB_URL = os.getenv(
     "DATABASE_URL",
@@ -18,19 +17,24 @@ RAW_DB_URL = os.getenv(
 )
 DB_URL = re.sub(r"^postgresql\+[a-zA-Z0-9_-]+://", "postgresql://", RAW_DB_URL)
 
+OPERATING_ENTITY = {
+    "code": "XCC-HQ",
+    "legal_name": "Ximalaya Specialty Coffee Producers Pvt. Ltd.",
+    "vat_pan_number": "609823412",
+    "base_currency": "NPR",
+}
+
 SEED_PARCELS = [
     {
         "farmer_name": "Sita Gurung",
         "supplier_code": "SUP-GUL-001",
-        "contact_phone": "+977-9847000101",
+        "phone_number": "+977-9847000101",
         "district": "Gulmi",
-        "municipality": "Ruru Kshetra Rural Municipality",
         "plot_label": "GUL-RURU-042",
         "area_hectares": 0.45,
         "altitude_masl": 1450,
         "lon": 83.4385,
         "lat": 27.9840,
-        # Multi-vertex polygon enclosure
         "polygon": [
             (83.4382, 27.9838),
             (83.4389, 27.9839),
@@ -43,9 +47,8 @@ SEED_PARCELS = [
     {
         "farmer_name": "Bhim Bahadur Thapa",
         "supplier_code": "SUP-PAL-002",
-        "contact_phone": "+977-9847000102",
+        "phone_number": "+977-9847000102",
         "district": "Palpa",
-        "municipality": "Tansen Municipality",
         "plot_label": "PAL-TAN-018",
         "area_hectares": 0.72,
         "altitude_masl": 1380,
@@ -63,29 +66,27 @@ SEED_PARCELS = [
     {
         "farmer_name": "Kamala Shrestha",
         "supplier_code": "SUP-KAV-003",
-        "contact_phone": "+977-9847000103",
+        "phone_number": "+977-9847000103",
         "district": "Kavrepalanchok",
-        "municipality": "Panauti Municipality",
         "plot_label": "KAV-PAN-105",
         "area_hectares": 0.38,
         "altitude_masl": 1520,
         "lon": 85.5180,
         "lat": 27.5840,
         "polygon": [
-            (83.5177, 27.5837),
-            (83.5184, 27.5838),
-            (83.5183, 27.5843),
-            (83.5176, 27.5842),
-            (83.5177, 27.5837)
+            (85.5177, 27.5837),
+            (85.5184, 27.5838),
+            (85.5183, 27.5843),
+            (85.5176, 27.5842),
+            (85.5177, 27.5837)
         ],
         "is_eudr_verified": True
     },
     {
         "farmer_name": "Ram Kumar Tamang",
         "supplier_code": "SUP-NUW-004",
-        "contact_phone": "+977-9847000104",
+        "phone_number": "+977-9847000104",
         "district": "Nuwakot",
-        "municipality": "Bidur Municipality",
         "plot_label": "NUW-BID-077",
         "area_hectares": 1.15,
         "altitude_masl": 1490,
@@ -103,9 +104,8 @@ SEED_PARCELS = [
     {
         "farmer_name": "Chitra Bahadur Pun",
         "supplier_code": "SUP-KAS-005",
-        "contact_phone": "+977-9847000105",
+        "phone_number": "+977-9847000105",
         "district": "Kaski",
-        "municipality": "Machhapuchhre Rural Municipality",
         "plot_label": "KAS-MAC-012",
         "area_hectares": 0.55,
         "altitude_masl": 1610,
@@ -133,83 +133,79 @@ def seed_database():
     cur = conn.cursor()
 
     try:
-        # Check suppliers table schema
-        cur.execute("""
-            SELECT column_name FROM information_schema.columns 
-            WHERE table_name = 'suppliers' AND table_schema = 'public';
-        """)
-        supplier_cols = {row[0] for row in cur.fetchall()}
-        
-        seeded_plots = 0
+        # 1. Ensure Operating Entity exists
+        cur.execute("SELECT id FROM operating_entities WHERE code = %s LIMIT 1;", (OPERATING_ENTITY["code"],))
+        entity_row = cur.fetchone()
+        if not entity_row:
+            entity_id = str(uuid.uuid4())
+            cur.execute("""
+                INSERT INTO operating_entities (id, code, legal_name, vat_pan_number, base_currency, is_active)
+                VALUES (%s, %s, %s, %s, %s, true);
+            """, (
+                entity_id,
+                OPERATING_ENTITY["code"],
+                OPERATING_ENTITY["legal_name"],
+                OPERATING_ENTITY["vat_pan_number"],
+                OPERATING_ENTITY["base_currency"]
+            ))
+            print(f"[✓] Created default operating entity: {OPERATING_ENTITY['legal_name']}")
+        else:
+            entity_id = entity_row[0]
+
+        # 2. Upsert Suppliers and Farm Plots
         for parcel in SEED_PARCELS:
-            # Upsert / Find Supplier
-            supplier_id = None
-            if "supplier_code" in supplier_cols:
-                cur.execute(
-                    "SELECT id FROM suppliers WHERE supplier_code = %s LIMIT 1;", 
-                    (parcel["supplier_code"],)
-                )
-                row = cur.fetchone()
-                if row:
-                    supplier_id = row[0]
-            
-            if not supplier_id:
+            # Supplier upsert
+            cur.execute("SELECT id FROM suppliers WHERE supplier_code = %s LIMIT 1;", (parcel["supplier_code"],))
+            sup_row = cur.fetchone()
+            if not sup_row:
                 supplier_id = str(uuid.uuid4())
-                col_names = ["id"]
-                vals = [supplier_id]
-                
-                if "supplier_code" in supplier_cols:
-                    col_names.append("supplier_code")
-                    vals.append(parcel["supplier_code"])
-                if "full_name" in supplier_cols:
-                    col_names.append("full_name")
-                    vals.append(parcel["farmer_name"])
-                elif "name" in supplier_cols:
-                    col_names.append("name")
-                    vals.append(parcel["farmer_name"])
-                if "contact_phone" in supplier_cols:
-                    col_names.append("contact_phone")
-                    vals.append(parcel["contact_phone"])
-                if "district" in supplier_cols:
-                    col_names.append("district")
-                    vals.append(parcel["district"])
-                if "municipality" in supplier_cols:
-                    col_names.append("municipality")
-                    vals.append(parcel["municipality"])
+                cur.execute("""
+                    INSERT INTO suppliers (
+                        id, entity_id, supplier_code, supplier_type, full_name,
+                        phone_number, district, altitude_masl, payment_method_pref,
+                        name_on_bag_consent
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """, (
+                    supplier_id,
+                    entity_id,
+                    parcel["supplier_code"],
+                    "SMALLHOLDER",
+                    parcel["farmer_name"],
+                    parcel["phone_number"],
+                    parcel["district"],
+                    parcel["altitude_masl"],
+                    "BANK",
+                    True
+                ))
+            else:
+                supplier_id = sup_row[0]
+                cur.execute("""
+                    UPDATE suppliers
+                    SET full_name = %s, phone_number = %s, district = %s, altitude_masl = %s
+                    WHERE id = %s;
+                """, (
+                    parcel["farmer_name"],
+                    parcel["phone_number"],
+                    parcel["district"],
+                    parcel["altitude_masl"],
+                    supplier_id
+                ))
 
-                placeholders = ", ".join(["%s"] * len(vals))
-                cur.execute(
-                    f"INSERT INTO suppliers ({', '.join(col_names)}) VALUES ({placeholders});",
-                    vals
-                )
-
-            # Check if plot already exists
-            cur.execute("SELECT id FROM farm_plots WHERE plot_label = %s;", (parcel["plot_label"],))
-            existing_plot = cur.fetchone()
-
-            wkt_poly = make_wkt_polygon(parcel["polygon"])
+            # Farm Plot upsert
             point_wkt = f"POINT({parcel['lon']} {parcel['lat']})"
+            wkt_poly = make_wkt_polygon(parcel["polygon"])
 
-            if not existing_plot:
+            cur.execute("SELECT id FROM farm_plots WHERE plot_label = %s LIMIT 1;", (parcel["plot_label"],))
+            plot_row = cur.fetchone()
+            if not plot_row:
                 cur.execute("""
                     INSERT INTO farm_plots (
-                        id, 
-                        supplier_id, 
-                        plot_label, 
-                        area_hectares, 
-                        altitude_masl, 
-                        location_point, 
-                        boundary_polygon, 
-                        is_eudr_verified
-                    )
-                    VALUES (
-                        %s, 
-                        %s, 
-                        %s, 
-                        %s, 
-                        %s, 
-                        ST_SetSRID(ST_GeomFromText(%s), 4326), 
-                        ST_SetSRID(ST_GeomFromText(%s), 4326), 
+                        id, supplier_id, plot_label, area_hectares, altitude_masl,
+                        location_point, boundary_polygon, is_eudr_verified
+                    ) VALUES (
+                        %s, %s, %s, %s, %s,
+                        ST_SetSRID(ST_GeomFromText(%s), 4326),
+                        ST_SetSRID(ST_GeomFromText(%s), 4326),
                         %s
                     );
                 """, (
@@ -222,21 +218,21 @@ def seed_database():
                     wkt_poly,
                     parcel["is_eudr_verified"]
                 ))
-                seeded_plots += 1
             else:
-                # Update geometry
                 cur.execute("""
                     UPDATE farm_plots
                     SET 
-                        altitude_masl = %s,
+                        supplier_id = %s,
                         area_hectares = %s,
+                        altitude_masl = %s,
                         location_point = ST_SetSRID(ST_GeomFromText(%s), 4326),
                         boundary_polygon = ST_SetSRID(ST_GeomFromText(%s), 4326),
                         is_eudr_verified = %s
                     WHERE plot_label = %s;
                 """, (
-                    parcel["altitude_masl"],
+                    supplier_id,
                     parcel["area_hectares"],
+                    parcel["altitude_masl"],
                     point_wkt,
                     wkt_poly,
                     parcel["is_eudr_verified"],
@@ -244,26 +240,28 @@ def seed_database():
                 ))
 
         conn.commit()
-        print(f"[✓] Successfully seeded {len(SEED_PARCELS)} Himalayan micro-terroirs (New: {seeded_plots}).")
+        print(f"[✓] Successfully seeded {len(SEED_PARCELS)} Himalayan farm plots & suppliers.")
 
-        # Output spatial verification
+        # Verification table output
         cur.execute("""
             SELECT 
                 fp.plot_label,
+                s.full_name,
+                s.district,
                 fp.altitude_masl,
                 fp.area_hectares,
-                ST_AsText(fp.location_point) as centroid,
-                ST_NPoints(fp.boundary_polygon) as polygon_vertices,
-                fp.is_eudr_verified
+                ST_NPoints(fp.boundary_polygon) as vertices,
+                ST_AsText(fp.location_point) as centroid
             FROM farm_plots fp
+            JOIN suppliers s ON fp.supplier_id = s.id
             ORDER BY fp.created_at ASC;
         """)
         rows = cur.fetchall()
         print("\nRegistered Cadastral Plots in PostGIS:")
-        print(f"{'Plot Label':<14} | {'Altitude':<9} | {'Area (ha)':<9} | {'Vertices':<8} | {'Centroid (Lon, Lat)'}")
-        print("-" * 75)
+        print(f"{'Plot':<13} | {'Farmer':<20} | {'District':<14} | {'Altitude':<9} | {'Area':<6} | {'Centroid'}")
+        print("-" * 95)
         for r in rows:
-            print(f"{r[0]:<14} | {r[1]} MASL  | {r[2]:<9} | {r[4]:<8} | {r[3]}")
+            print(f"{r[0]:<13} | {r[1]:<20} | {r[2]:<14} | {r[3]} MASL  | {r[4]} ha | {r[6]}")
 
     except Exception as e:
         conn.rollback()

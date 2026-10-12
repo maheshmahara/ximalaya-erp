@@ -1,3 +1,4 @@
+from apps.api.src.modules.procurement_advanced_router import router as procurement_advanced_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apps.api.src.modules.procurement.spatial_router import router as spatial_router
@@ -54,3 +55,5 @@ for r in module_routers:
     app.include_router(r)
     app.include_router(r, prefix="/api")
 app.include_router(compliance_router, prefix="/api")
+
+app.include_router(procurement_advanced_router)

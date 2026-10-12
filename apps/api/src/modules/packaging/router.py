@@ -7,6 +7,8 @@ from sqlalchemy import text
 
 from apps.api.src.core.database import get_db_session
 from apps.api.src.modules.packaging.label_service import LabelSheetGenerator
+from apps.api.src.modules.auth.dependencies import require_role, AuditLogger
+from fastapi import Request
 
 router = APIRouter(prefix="/packaging", tags=["Packaging & Print Operations"])
 
@@ -15,8 +17,10 @@ VERIFY_BASE_URL = os.getenv("VERIFY_BASE_URL", "http://103.254.186.194:55555/lot
 
 @router.api_route("/print-labels", methods=["GET", "HEAD"], status_code=status.HTTP_200_OK)
 async def print_labels(
+    request: Request,
     lot_code: Optional[str] = Query(None, description="Optional single lot code to repeat across the full sheet (24 labels)"),
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(require_role("OPERATOR"))
 ):
     """
     Direct in-browser print endpoint for warehouse label sheets.
@@ -90,4 +94,14 @@ async def print_labels(
         "Content-Type": "application/pdf"
     }
 
+    # Record warehouse print operation in immutable audit log
+    await AuditLogger.log_action(
+        db=db,
+        request=request,
+        user=current_user,
+        action="PRINT_STICKER_SHEET",
+        resource_type="LABEL_BATCH",
+        resource_id=lot_code or "ALL_ACTIVE",
+        payload={"lot_code": lot_code, "label_count": 24}
+    )
     return StreamingResponse(pdf_buffer, media_type="application/pdf", headers=headers)

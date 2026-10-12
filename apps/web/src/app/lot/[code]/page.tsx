@@ -1,5 +1,6 @@
 import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
+import PrintLabelButton from "./PrintLabelButton";
 
 interface TraceabilityData {
   status: string;
@@ -75,14 +76,17 @@ export default async function LotTraceabilityPage({ params }: { params: { code: 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-4 sm:p-6 lg:p-8 font-sans selection:bg-emerald-500 selection:text-black">
       <div className="w-full max-w-lg space-y-4">
-        {/* Header Branding */}
+        {/* Header Branding & Top Action */}
         <div className="flex items-center justify-between pb-2 border-b border-white/10">
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white">XIMALAYA COFFEE</h1>
             <p className="text-xs text-emerald-400 font-mono">NEPAL SPECIALTY ORIGIN VERIFICATION</p>
           </div>
-          <div className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-semibold text-emerald-400">
-            EUDR COMPLIANT
+          <div className="flex items-center gap-2">
+            <PrintLabelButton lotCode={data.pack_lot_code} />
+            <div className="hidden sm:inline-block px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-semibold text-emerald-400">
+              EUDR COMPLIANT
+            </div>
           </div>
         </div>
 

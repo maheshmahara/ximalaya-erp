@@ -10,6 +10,7 @@ from apps.api.src.modules.traceability.traces_service import TracesExportService
 
 router = APIRouter(prefix="/traceability", tags=["Batch Genealogy & Traceability"])
 
+@router.get("/lot/{pack_lot_code}", status_code=status.HTTP_200_OK)
 @router.get("/public/lot/{pack_lot_code}", status_code=status.HTTP_200_OK)
 async def get_public_pack_traceability(
     pack_lot_code: str,

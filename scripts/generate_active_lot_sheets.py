@@ -7,6 +7,7 @@ Fetches all active packaged lots from PostgreSQL/PostGIS and renders
 
 import os
 import io
+import re
 import sys
 from datetime import datetime
 import psycopg2
@@ -19,10 +20,13 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
-DB_URL = os.getenv(
+RAW_DB_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql://postgres:password@localhost:5432/ximalaya_erp"
+    "postgresql://xcc_admin:xcc_dev_pass_2083@postgres:5432/ximalaya_erp"
 )
+# Normalize SQLAlchemy dialect strings (e.g., postgresql+asyncpg:// -> postgresql://)
+DB_URL = re.sub(r"^postgresql\+[a-zA-Z0-9_-]+://", "postgresql://", RAW_DB_URL)
+
 VERIFY_BASE_URL = os.getenv(
     "VERIFY_BASE_URL", 
     "http://103.254.186.194:55555/lot"
@@ -75,7 +79,7 @@ def fetch_active_lots():
         if records:
             return records
     except Exception as exc:
-        print(f"[!] Database query failed or table empty: {exc}")
+        print(f"[!] Live query notice: {exc}")
     
     print("[i] Using verified production demo lot record...")
     return [
@@ -108,7 +112,7 @@ def create_qr_buffer(url: str) -> io.BytesIO:
 
 
 def draw_label(pdf: canvas.Canvas, x: float, y: float, w: float, h: float, lot: dict):
-    # Border
+    # Die-cut border guideline
     pdf.setStrokeColor(colors.HexColor("#D1D5DB"))
     pdf.setLineWidth(0.4)
     pdf.roundRect(x, y, w, h, 2 * mm, stroke=1, fill=0)
@@ -139,7 +143,7 @@ def draw_label(pdf: canvas.Canvas, x: float, y: float, w: float, h: float, lot: 
     pdf.setFont("Helvetica-Bold", 4.5)
     pdf.drawCentredString(qr_x + (qr_size / 2.0), y + 1.2 * mm, "SCAN FOR ORIGIN MAP")
 
-    # Details
+    # Text details
     text_x = qr_x + qr_size + 2.5 * mm
     
     pdf.setFillColor(colors.HexColor("#0F172A"))

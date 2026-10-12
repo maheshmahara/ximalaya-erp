@@ -1,0 +1,33 @@
+name: ERP WAN Healthz Check
+
+on:
+  schedule:
+    # Runs every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping_erp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Public Healthz
+        id: check_health
+        run: |
+          RESPONSE=$(curl -s --connect-timeout 10 --max-time 15 "http://103.254.186.194:55555/healthz" || echo "FAILED")
+          echo "Response: $RESPONSE"
+          if [[ "$RESPONSE" != *"ximalaya_api"* ]]; then
+            echo "Healthcheck probe failed!"
+            exit 1
+          fi
+
+      - name: Notify on Failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "text=🚨 ALERT: Ximalaya ERP WAN endpoint http://103.254.186.194:55555/healthz is DOWN or unreachable."
+          fi

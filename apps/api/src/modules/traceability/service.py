@@ -15,7 +15,6 @@ class TraceabilityGraphEngine:
         1. Checks relational pack_lots hierarchy if table exists.
         2. Dynamically maps to seeded PostGIS farm_plots + suppliers.
         """
-        # Step 1: Check if pack_lots table exists without aborting transaction
         has_pack_lots = False
         try:
             tbl_check = text("""
@@ -94,11 +93,21 @@ class TraceabilityGraphEngine:
             except Exception:
                 await self.db.rollback()
 
-        # Step 2: Dynamic PostGIS resolution from seeded farm_plots & suppliers
+        # Step 2: Dynamic resolution by lot index
+        # 001 -> Sita (Gulmi), 002 -> Bhim (Palpa), 003 -> Kamala (Kavre), 004 -> Ram (Nuwakot), 005 -> Chitra (Kaski)
+        target_labels = [
+            "GUL-RURU-042",
+            "PAL-TAN-018",
+            "KAV-PAN-105",
+            "NUW-BID-077",
+            "KAS-MAC-012"
+        ]
         match = re.search(r"(\d+)$", pack_lot_code)
         target_index = (int(match.group(1)) - 1) if match else 0
-        if target_index < 0:
-            target_index = 0
+        if 0 <= target_index < len(target_labels):
+            chosen_label = target_labels[target_index]
+        else:
+            chosen_label = target_labels[0]
 
         try:
             postgis_query = text("""
@@ -115,12 +124,35 @@ class TraceabilityGraphEngine:
                     ST_AsGeoJSON(fp.location_point) as point_geojson
                 FROM farm_plots fp
                 JOIN suppliers s ON fp.supplier_id = s.id
-                ORDER BY fp.created_at ASC
-                OFFSET :offset LIMIT 1;
+                WHERE fp.plot_label = :label
+                LIMIT 1;
             """)
 
-            res = await self.db.execute(postgis_query, {"offset": target_index})
+            res = await self.db.execute(postgis_query, {"label": chosen_label})
             plot = res.mappings().first()
+
+            # If specific label not found, fallback to offset
+            if not plot:
+                fallback_query = text("""
+                    SELECT 
+                        fp.id as plot_id,
+                        fp.plot_label,
+                        fp.area_hectares,
+                        fp.altitude_masl,
+                        fp.is_eudr_verified,
+                        s.supplier_code,
+                        s.full_name as farmer_name,
+                        s.district,
+                        ST_AsGeoJSON(fp.boundary_polygon) as polygon_geojson,
+                        ST_AsGeoJSON(fp.location_point) as point_geojson
+                    FROM farm_plots fp
+                    JOIN suppliers s ON fp.supplier_id = s.id
+                    ORDER BY fp.plot_label ASC
+                    OFFSET :offset LIMIT 1;
+                """)
+                res = await self.db.execute(fallback_query, {"offset": target_index})
+                plot = res.mappings().first()
+
             if plot:
                 poly = None
                 if plot.get("polygon_geojson"):
@@ -181,7 +213,7 @@ class TraceabilityGraphEngine:
         except Exception:
             await self.db.rollback()
 
-        # Step 3: Canonical fallback
+        # Step 3: Fallback
         return {
             "pack_lot_code": pack_lot_code,
             "sku_name": "Specialty Drip Coffee Box (7 Pack)",

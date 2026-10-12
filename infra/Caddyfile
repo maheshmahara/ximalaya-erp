@@ -3,7 +3,6 @@
     auto_https off
 }
 
-# Catch-all HTTP listener for Public IP, Local LAN IP, and NAT port 55555
 :80, :55555, http://103.254.186.194:55555, http://192.168.5.109:55555 {
     encode gzip zstd
 
@@ -13,36 +12,21 @@
         Referrer-Policy "strict-origin-when-cross-origin"
     }
 
-    # Packaging & PDF Generation
-    handle /api/packaging/* {
-        reverse_proxy api:8000
-    }
-
-    # EUDR Compliance & GeoJSON Export
-    handle /api/compliance/* {
-        reverse_proxy api:8000
-    }
-
-    # Traceability & Lineage
-    handle /api/traceability/* {
-        reverse_proxy api:8000
-    }
-    handle /traceability/* {
-        reverse_proxy api:8000
-    }
-
-    # API Documentation & Health
+    # API Documentation & Health Check
     handle /healthz {
         reverse_proxy api:8000
     }
     handle /docs* {
         reverse_proxy api:8000
     }
+    handle /redoc* {
+        reverse_proxy api:8000
+    }
     handle /openapi.json {
         reverse_proxy api:8000
     }
 
-    # Core API Endpoints
+    # API Endpoints (All backend logic sits strictly under /api/)
     handle /api/* {
         reverse_proxy api:8000
     }
@@ -50,12 +34,12 @@
         reverse_proxy api:8000
     }
 
-    # WebSocket Streams (Artisan / Sensor telemetries)
+    # WebSocket Streams (Telemetry)
     handle /ws/* {
         reverse_proxy api:8000
     }
 
-    # Next.js 14 Web Frontend
+    # All UI Routes & Static Assets -> Next.js 14
     handle {
         reverse_proxy web:3000
     }

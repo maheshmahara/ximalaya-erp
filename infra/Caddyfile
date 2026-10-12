@@ -1,19 +1,37 @@
-# Global settings
 {
     admin off
     auto_https off
 }
 
-# Plain HTTP block
-:80, http://192.168.5.109 {
+# Catch-all HTTP listener for Public IP, Local LAN IP, and NAT port 55555
+:80, :55555, http://103.254.186.194:55555, http://192.168.5.109:55555 {
     encode gzip zstd
 
-    # Public Traceability QR Resolver
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Packaging & PDF Generation
+    handle /api/packaging/* {
+        reverse_proxy api:8000
+    }
+
+    # EUDR Compliance & GeoJSON Export
+    handle /api/compliance/* {
+        reverse_proxy api:8000
+    }
+
+    # Traceability & Lineage
+    handle /api/traceability/* {
+        reverse_proxy api:8000
+    }
     handle /traceability/* {
         reverse_proxy api:8000
     }
 
-    # FastAPI Health & Docs
+    # API Documentation & Health
     handle /healthz {
         reverse_proxy api:8000
     }
@@ -24,7 +42,7 @@
         reverse_proxy api:8000
     }
 
-    # FastAPI Core Endpoints
+    # Core API Endpoints
     handle /api/* {
         reverse_proxy api:8000
     }
@@ -32,43 +50,12 @@
         reverse_proxy api:8000
     }
 
-    # ESP32 Artisan WebSocket Stream
+    # WebSocket Streams (Artisan / Sensor telemetries)
     handle /ws/* {
         reverse_proxy api:8000
     }
 
     # Next.js 14 Web Frontend
-    handle {
-        reverse_proxy web:3000
-    }
-}
-
-# Optional Internal TLS block
-https://192.168.5.109 {
-    tls internal
-    encode gzip zstd
-
-    handle /traceability/* {
-        reverse_proxy api:8000
-    }
-    handle /healthz {
-        reverse_proxy api:8000
-    }
-    handle /docs* {
-        reverse_proxy api:8000
-    }
-    handle /openapi.json {
-        reverse_proxy api:8000
-    }
-    handle /api/* {
-        reverse_proxy api:8000
-    }
-    handle /spatial/* {
-        reverse_proxy api:8000
-    }
-    handle /ws/* {
-        reverse_proxy api:8000
-    }
     handle {
         reverse_proxy web:3000
     }

@@ -73,29 +73,34 @@ const PLOTS: Plot[] = [
 export default function TraceabilityMapPage() {
   const [selectedPlot, setSelectedPlot] = useState<Plot>(PLOTS[0]);
   const [mapType, setMapType] = useState<'satellite' | 'streets'>('satellite');
-  
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const currentTileLayerRef = useRef<any>(null);
-  const overlayLayerRef = useRef<any>(null);
   const polygonLayersRef = useRef<{ [code: string]: any }>({});
 
-  // Initialize Leaflet Map
   useEffect(() => {
     if (typeof window === 'undefined' || !mapContainerRef.current) return;
 
     let isMounted = true;
 
+    // Inject Leaflet CSS directly if not already present
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
     import('leaflet').then((L) => {
       if (!isMounted || !mapContainerRef.current) return;
 
-      // Avoid re-initializing if map already exists
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
 
-      // Fix default Leaflet icon paths
       delete (L.Icon.Default.prototype as any)._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -103,29 +108,23 @@ export default function TraceabilityMapPage() {
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       });
 
-      const map = L.map(mapContainerRef.current).setView(selectedPlot.centroid, 15);
+      const map = L.map(mapContainerRef.current, {
+        attributionControl: false,
+        zoomControl: true,
+      }).setView(selectedPlot.centroid, 15);
+
       mapInstanceRef.current = map;
 
-      // Basemap layers
+      // Google Satellite Hybrid tile endpoint for fast global caching
       const satLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        {
-          attribution: '&copy; Esri, Earthstar Geographics',
-          maxZoom: 19,
-        }
-      );
-
-      const refLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-        { maxZoom: 19 }
+        'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        { maxZoom: 20 }
       );
 
       satLayer.addTo(map);
-      refLayer.addTo(map);
       currentTileLayerRef.current = satLayer;
-      overlayLayerRef.current = refLayer;
 
-      // Add Polygons
+      // Draw all farm plots
       polygonLayersRef.current = {};
       PLOTS.forEach((plot) => {
         const isCurrent = plot.code === selectedPlot.code;
@@ -140,16 +139,20 @@ export default function TraceabilityMapPage() {
           <div style="font-family: sans-serif; font-size: 12px; color: #111;">
             <strong>${plot.code}</strong><br/>
             ${plot.farmer} (${plot.cooperative})<br/>
-            Area: ${plot.area_ha} Ha · ${plot.elevation} MASL
+            Elevation: ${plot.elevation} MASL · Area: ${plot.area_ha} Ha
           </div>
         `);
 
-        poly.on('click', () => {
-          setSelectedPlot(plot);
-        });
-
+        poly.on('click', () => setSelectedPlot(plot));
         polygonLayersRef.current[plot.code] = poly;
       });
+
+      // Force recalculation of container bounds after initial DOM paint
+      setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, 250);
     });
 
     return () => {
@@ -161,7 +164,7 @@ export default function TraceabilityMapPage() {
     };
   }, []);
 
-  // Handle Layer Switching (Satellite vs Streets)
+  // Switch between Google Satellite and CartoDB Voyager
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
@@ -172,40 +175,29 @@ export default function TraceabilityMapPage() {
       if (currentTileLayerRef.current) {
         map.removeLayer(currentTileLayerRef.current);
       }
-      if (overlayLayerRef.current) {
-        map.removeLayer(overlayLayerRef.current);
-      }
 
       if (mapType === 'satellite') {
-        const sat = L.tileLayer(
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          { attribution: '&copy; Esri', maxZoom: 19 }
-        ).addTo(map);
-
-        const ref = L.tileLayer(
-          'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        const sat = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+          maxZoom: 20,
+        }).addTo(map);
+        currentTileLayerRef.current = sat;
+      } else {
+        const streets = L.tileLayer(
+          'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
           { maxZoom: 19 }
         ).addTo(map);
-
-        currentTileLayerRef.current = sat;
-        overlayLayerRef.current = ref;
-      } else {
-        const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap contributors',
-          maxZoom: 19,
-        }).addTo(map);
-
-        currentTileLayerRef.current = osm;
-        overlayLayerRef.current = null;
+        currentTileLayerRef.current = streets;
       }
+
+      map.invalidateSize();
     });
   }, [mapType]);
 
-  // Handle Plot Selection Changes (Fly to centroid and highlight)
+  // Center and highlight selected plot
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
-    mapInstanceRef.current.flyTo(selectedPlot.centroid, 15, { duration: 1.2 });
+    mapInstanceRef.current.flyTo(selectedPlot.centroid, 15, { duration: 1.0 });
 
     PLOTS.forEach((plot) => {
       const poly = polygonLayersRef.current[plot.code];
@@ -222,6 +214,12 @@ export default function TraceabilityMapPage() {
         }
       }
     });
+
+    setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 300);
   }, [selectedPlot]);
 
   return (
@@ -256,7 +254,7 @@ export default function TraceabilityMapPage() {
         {/* Map & Plot Inspector Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Map Column */}
-          <div className="lg:col-span-2 rounded-3xl border border-neutral-800 bg-neutral-900/40 overflow-hidden shadow-2xl relative h-[650px]">
+          <div className="lg:col-span-2 rounded-3xl border border-neutral-800 bg-neutral-900/40 overflow-hidden shadow-2xl relative h-[650px] min-h-[600px] w-full">
             {/* Satellite / Streets Toggle */}
             <div className="absolute top-4 right-4 z-[1000] flex items-center bg-neutral-900/90 backdrop-blur-md border border-neutral-700 rounded-xl p-1 shadow-2xl">
               <button
@@ -286,7 +284,11 @@ export default function TraceabilityMapPage() {
             </div>
 
             {/* Container where Leaflet attaches */}
-            <div ref={mapContainerRef} className="h-full w-full z-0" />
+            <div
+              ref={mapContainerRef}
+              className="absolute inset-0 h-full w-full bg-neutral-900"
+              style={{ minHeight: '100%', minWidth: '100%' }}
+            />
           </div>
 
           {/* Cadastral Inspector Sidebar */}

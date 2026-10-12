@@ -28,8 +28,6 @@ async def get_public_pack_traceability(
             detail=f"Pack lot code {pack_lot_code} not found in traceability index"
         )
 
-    # Format into consumer-facing structured response
-    # Parse eudr_geojson if raw string returned from PostGIS
     geojson = trace_data.get("eudr_geojson")
     if isinstance(geojson, str):
         try:
@@ -37,22 +35,26 @@ async def get_public_pack_traceability(
         except Exception:
             pass
 
+    farmer_dict = trace_data.get("farmer") if isinstance(trace_data.get("farmer"), dict) else {}
+    farmer_name = trace_data.get("farmer_name") or farmer_dict.get("name", "Community Micro-Lot")
+    district = trace_data.get("region") or farmer_dict.get("district") or f"{trace_data.get('district', 'Nepal')}, Nepal"
+
     return {
         "status": "VERIFIED_SPECIALTY_ORIGIN",
         "pack_lot_code": trace_data.get("pack_lot_code", pack_lot_code),
         "sku": trace_data.get("sku_type") or trace_data.get("sku_name", "Specialty Coffee"),
         "best_before": str(trace_data.get("best_before_date") or trace_data.get("best_before", "N/A")),
         "origin_profile": {
-            "farmer_name": trace_data.get("farmer", {}).get("name") if "farmer" in trace_data else "Community Micro-Lot",
-            "altitude_masl": trace_data.get("altitude_masl") or trace_data.get("farmer", {}).get("altitude_masl", 1450),
-            "region": "Gulmi, Ruru Kshetra, Nepal",
+            "farmer_name": farmer_name,
+            "altitude_masl": trace_data.get("altitude_masl") or farmer_dict.get("altitude_masl", 1450),
+            "region": district,
             "cadastral_parcel": trace_data.get("cadastral_parcel_number") or trace_data.get("eudr", {}).get("parcel_id", "GUL-RURU-042"),
             "eudr_compliance": trace_data.get("eudr_compliance_status") or "ZERO_DEFORESTATION_COMPLIANT",
             "coordinates_geojson": geojson or trace_data.get("eudr", {}).get("coordinates")
         },
         "roast_profile": {
             "roast_batch_code": trace_data.get("roast_batch_code") or trace_data.get("roasting", {}).get("batch", "R-LIVE"),
-            "drop_temp_celsius": trace_data.get("drop_temp_celsius") or trace_data.get("roasting", {}).get("drop_temp", 214.5),
+            "drop_temp_celsius": str(trace_data.get("drop_temp_celsius") or trace_data.get("roasting", {}).get("drop_temp", "214.5°C")),
             "agtron_score": trace_data.get("agtron_color_score") or trace_data.get("roasting", {}).get("agtron_score", 62.5),
             "total_sca_score": trace_data.get("total_sca_score") or trace_data.get("roasting", {}).get("cupping_score", 84.50)
         },
@@ -70,10 +72,6 @@ async def get_batch_genealogy(batch_code: str):
         raise HTTPException(status_code=404, detail="Batch code not found")
     return data
 
-@router.get("/eudr/traces-nt/{dds_reference}")
-async def export_traces_nt_package(dds_reference: str):
-    payload = TracesExportService.generate_traces_nt_payload(dds_reference=dds_reference)
-    return JSONResponse(
-        content=payload,
-        headers={"Content-Disposition": f"attachment; filename=TRACES_NT_{dds_reference}.json"}
-    )
+@router.get("/traces/export")
+async def export_traces(format: str = "json"):
+    return TracesExportService.export_all(format=format)

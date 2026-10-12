@@ -36,13 +36,41 @@ export default function BatchAuditPage() {
   const batchId = Array.isArray(rawBatchId) ? rawBatchId[0] : (rawBatchId || 'PK-2083-0459');
 
   const [data, setData] = useState<GenealogyData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`http://localhost:8000/batches/${batchId}/genealogy`)
-      .then((res) => res.json())
+    fetch(`/api/traceability/batches/${batchId}/genealogy`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Server returned HTTP ${res.status}`);
+        }
+        return res.json();
+      })
       .then((json) => setData(json))
-      .catch((err) => console.error('Genealogy fetch error:', err));
+      .catch((err) => {
+        console.error('Genealogy fetch error:', err);
+        fetch(`/traceability/batches/${batchId}/genealogy`)
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+          })
+          .then((json) => setData(json))
+          .catch((fallbackErr) => {
+            setError(fallbackErr.message || 'Failed to load batch audit data');
+          });
+      });
   }, [batchId]);
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 font-mono text-sm gap-3">
+        <span className="text-rose-400">Ledger retrieval error: {error}</span>
+        <Link href="/" className="text-amber-500 hover:underline">
+          Return to Dashboard
+        </Link>
+      </div>
+    );
+  }
 
   if (!data) {
     return (
@@ -57,11 +85,13 @@ export default function BatchAuditPage() {
       <div className="max-w-6xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2 text-xs font-mono text-slate-400">
-            <Link href="/traceability/map" className="hover:text-sky-400">Traceability</Link>
+            <Link href="/" className="hover:text-amber-400">ERP Home</Link>
+            <span>/</span>
+            <Link href="/traceability/map" className="hover:text-amber-400">Traceability</Link>
             <span>/</span>
             <span className="text-slate-200">Batches</span>
             <span>/</span>
-            <span className="text-sky-400">{data.batch_code}</span>
+            <span className="text-amber-400">{data.batch_code}</span>
           </div>
 
           <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-950/80 border border-emerald-700 text-emerald-400">
@@ -113,7 +143,7 @@ export default function BatchAuditPage() {
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-sky-950 border border-sky-600 text-sky-400 text-xs font-mono font-bold flex items-center justify-center">
+                      <span className="w-6 h-6 rounded-full bg-amber-950 border border-amber-600 text-amber-400 text-xs font-mono font-bold flex items-center justify-center">
                         {idx + 1}
                       </span>
                       <h3 className="text-base font-bold text-white">{stg.stage_name}</h3>

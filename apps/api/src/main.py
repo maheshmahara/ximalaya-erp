@@ -36,7 +36,7 @@ async def healthz():
 
 # Core Auth & WebSockets
 app.include_router(auth_router)
-app.include_router(auth_router, prefix="/api")
+app.include_router(auth_router)
 app.include_router(ws_router)
 
 # Mount all feature routers at root and under /api for full test & proxy compatibility

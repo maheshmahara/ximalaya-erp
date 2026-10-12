@@ -1,30 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-
-// Dynamically import Leaflet components (client-side only)
-const MapContainer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.MapContainer),
-  { ssr: false }
-);
-const TileLayer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.TileLayer),
-  { ssr: false }
-);
-const Polygon = dynamic(
-  () => import('react-leaflet').then((mod) => mod.Polygon),
-  { ssr: false }
-);
-const Marker = dynamic(
-  () => import('react-leaflet').then((mod) => mod.Marker),
-  { ssr: false }
-);
-const Popup = dynamic(
-  () => import('react-leaflet').then((mod) => mod.Popup),
-  { ssr: false }
-);
 
 interface Plot {
   code: string;
@@ -95,12 +72,157 @@ const PLOTS: Plot[] = [
 
 export default function TraceabilityMapPage() {
   const [selectedPlot, setSelectedPlot] = useState<Plot>(PLOTS[0]);
-  const [mapType, setMapType] = useState<'streets' | 'satellite'>('satellite');
-  const [isClient, setIsClient] = useState(false);
+  const [mapType, setMapType] = useState<'satellite' | 'streets'>('satellite');
+  
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const currentTileLayerRef = useRef<any>(null);
+  const overlayLayerRef = useRef<any>(null);
+  const polygonLayersRef = useRef<{ [code: string]: any }>({});
 
+  // Initialize Leaflet Map
   useEffect(() => {
-    setIsClient(true);
+    if (typeof window === 'undefined' || !mapContainerRef.current) return;
+
+    let isMounted = true;
+
+    import('leaflet').then((L) => {
+      if (!isMounted || !mapContainerRef.current) return;
+
+      // Avoid re-initializing if map already exists
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+
+      // Fix default Leaflet icon paths
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      });
+
+      const map = L.map(mapContainerRef.current).setView(selectedPlot.centroid, 15);
+      mapInstanceRef.current = map;
+
+      // Basemap layers
+      const satLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: '&copy; Esri, Earthstar Geographics',
+          maxZoom: 19,
+        }
+      );
+
+      const refLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 19 }
+      );
+
+      satLayer.addTo(map);
+      refLayer.addTo(map);
+      currentTileLayerRef.current = satLayer;
+      overlayLayerRef.current = refLayer;
+
+      // Add Polygons
+      polygonLayersRef.current = {};
+      PLOTS.forEach((plot) => {
+        const isCurrent = plot.code === selectedPlot.code;
+        const poly = L.polygon(plot.polygon, {
+          color: isCurrent ? '#f59e0b' : '#10b981',
+          fillColor: isCurrent ? '#f59e0b' : '#10b981',
+          fillOpacity: isCurrent ? 0.45 : 0.25,
+          weight: isCurrent ? 3 : 2,
+        }).addTo(map);
+
+        poly.bindPopup(`
+          <div style="font-family: sans-serif; font-size: 12px; color: #111;">
+            <strong>${plot.code}</strong><br/>
+            ${plot.farmer} (${plot.cooperative})<br/>
+            Area: ${plot.area_ha} Ha · ${plot.elevation} MASL
+          </div>
+        `);
+
+        poly.on('click', () => {
+          setSelectedPlot(plot);
+        });
+
+        polygonLayersRef.current[plot.code] = poly;
+      });
+    });
+
+    return () => {
+      isMounted = false;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
   }, []);
+
+  // Handle Layer Switching (Satellite vs Streets)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    import('leaflet').then((L) => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+
+      if (currentTileLayerRef.current) {
+        map.removeLayer(currentTileLayerRef.current);
+      }
+      if (overlayLayerRef.current) {
+        map.removeLayer(overlayLayerRef.current);
+      }
+
+      if (mapType === 'satellite') {
+        const sat = L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          { attribution: '&copy; Esri', maxZoom: 19 }
+        ).addTo(map);
+
+        const ref = L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom: 19 }
+        ).addTo(map);
+
+        currentTileLayerRef.current = sat;
+        overlayLayerRef.current = ref;
+      } else {
+        const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors',
+          maxZoom: 19,
+        }).addTo(map);
+
+        currentTileLayerRef.current = osm;
+        overlayLayerRef.current = null;
+      }
+    });
+  }, [mapType]);
+
+  // Handle Plot Selection Changes (Fly to centroid and highlight)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    mapInstanceRef.current.flyTo(selectedPlot.centroid, 15, { duration: 1.2 });
+
+    PLOTS.forEach((plot) => {
+      const poly = polygonLayersRef.current[plot.code];
+      if (poly) {
+        const isCurrent = plot.code === selectedPlot.code;
+        poly.setStyle({
+          color: isCurrent ? '#f59e0b' : '#10b981',
+          fillColor: isCurrent ? '#f59e0b' : '#10b981',
+          fillOpacity: isCurrent ? 0.45 : 0.25,
+          weight: isCurrent ? 3 : 2,
+        });
+        if (isCurrent) {
+          poly.openPopup();
+        }
+      }
+    });
+  }, [selectedPlot]);
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-6 sm:p-10 font-sans">
@@ -135,7 +257,7 @@ export default function TraceabilityMapPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Map Column */}
           <div className="lg:col-span-2 rounded-3xl border border-neutral-800 bg-neutral-900/40 overflow-hidden shadow-2xl relative h-[650px]">
-            {/* Satellite / Street Layer Switcher Control */}
+            {/* Satellite / Streets Toggle */}
             <div className="absolute top-4 right-4 z-[1000] flex items-center bg-neutral-900/90 backdrop-blur-md border border-neutral-700 rounded-xl p-1 shadow-2xl">
               <button
                 type="button"
@@ -163,68 +285,8 @@ export default function TraceabilityMapPage() {
               </button>
             </div>
 
-            {isClient ? (
-              <MapContainer
-                center={selectedPlot.centroid}
-                zoom={14}
-                scrollWheelZoom={true}
-                className="h-full w-full"
-              >
-                {mapType === 'satellite' ? (
-                  <>
-                    {/* Esri World Imagery Satellite Tiles */}
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.esri.com/">Esri</a> &mdash; Earthstar Geographics'
-                      url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                      maxZoom={19}
-                    />
-                    {/* Road/Boundary Reference Overlay */}
-                    <TileLayer
-                      attribution='&copy; Esri'
-                      url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-                      maxZoom={19}
-                    />
-                  </>
-                ) : (
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    maxZoom={19}
-                  />
-                )}
-
-                {PLOTS.map((plot) => (
-                  <React.Fragment key={plot.code}>
-                    <Polygon
-                      positions={plot.polygon}
-                      pathOptions={{
-                        color: plot.code === selectedPlot.code ? '#f59e0b' : '#10b981',
-                        fillColor: plot.code === selectedPlot.code ? '#f59e0b' : '#10b981',
-                        fillOpacity: plot.code === selectedPlot.code ? 0.45 : 0.25,
-                        weight: plot.code === selectedPlot.code ? 3 : 2,
-                      }}
-                      eventHandlers={{
-                        click: () => setSelectedPlot(plot),
-                      }}
-                    >
-                      <Popup>
-                        <div className="text-neutral-900 text-xs font-sans">
-                          <strong>{plot.code}</strong>
-                          <br />
-                          {plot.farmer} ({plot.cooperative})
-                          <br />
-                          Area: {plot.area_ha} Ha · {plot.elevation} MASL
-                        </div>
-                      </Popup>
-                    </Polygon>
-                  </React.Fragment>
-                ))}
-              </MapContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center text-neutral-500 font-mono text-xs">
-                Initializing GIS spatial engine...
-              </div>
-            )}
+            {/* Container where Leaflet attaches */}
+            <div ref={mapContainerRef} className="h-full w-full z-0" />
           </div>
 
           {/* Cadastral Inspector Sidebar */}
@@ -259,7 +321,7 @@ export default function TraceabilityMapPage() {
                 </div>
               </div>
 
-              {/* EUDR Validation Box */}
+              {/* EUDR Verification Badge */}
               <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800/70 text-emerald-300 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -281,7 +343,7 @@ export default function TraceabilityMapPage() {
                 <div className="text-neutral-200">Lng: {selectedPlot.centroid[1]}</div>
               </div>
 
-              {/* Select Plot Buttons */}
+              {/* Plot Switcher */}
               <div className="pt-2 border-t border-neutral-800">
                 <span className="text-[10px] text-neutral-500 uppercase font-mono block mb-2">
                   Switch Active Cadastral Parcel:

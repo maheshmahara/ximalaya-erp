@@ -13,7 +13,7 @@ router = APIRouter(prefix="/packaging", tags=["Packaging & Print Operations"])
 VERIFY_BASE_URL = os.getenv("VERIFY_BASE_URL", "http://103.254.186.194:55555/lot")
 
 
-@router.get("/print-labels", status_code=status.HTTP_200_OK)
+@router.api_route("/print-labels", methods=["GET", "HEAD"], status_code=status.HTTP_200_OK)
 async def print_labels(
     lot_code: Optional[str] = Query(None, description="Optional single lot code to repeat across the full sheet (24 labels)"),
     db: AsyncSession = Depends(get_db_session)

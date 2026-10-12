@@ -63,8 +63,13 @@ class TraceabilityGraphEngine:
             WHERE p.pack_lot_code = :code;
         """)
 
-        res = await self.db.execute(query, {"code": pack_lot_code})
-        row = res.mappings().first()
+        row = None
+        try:
+            res = await self.db.execute(query, {"code": pack_lot_code})
+            row = res.mappings().first()
+        except Exception as e:
+            # Table or relation not yet present; fall back cleanly
+            pass
 
         # Fallback to realistic mock if database record is fresh
         if not row:

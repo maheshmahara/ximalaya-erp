@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from apps.api.src.core.security import create_access_token, RoleChecker
 
-router = APIRouter(prefix="/auth", tags=["Authentication & RBAC"])
+router = APIRouter(prefix="/api/auth", tags=["Authentication & RBAC"])
 
 class LoginRequest(BaseModel):
     username: str

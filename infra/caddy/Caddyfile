@@ -1,66 +1,47 @@
-# Global settings
 {
-    admin off
     auto_https off
+    admin off
 }
 
-# Plain HTTP block for LAN direct access
-:80, http://192.168.5.109 {
-    encode gzip zstd
+:80 {
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
 
-    # FastAPI Health & Docs
-    handle /healthz {
+    # Handle public traceability requests
+    handle /traceability/* {
         reverse_proxy api:8000
     }
+
+    # Handle API, Swagger docs, health, spatial, and websockets
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
     handle /docs* {
         reverse_proxy api:8000
     }
+
     handle /openapi.json {
         reverse_proxy api:8000
     }
 
-    # FastAPI Core Endpoints
-    handle /api/* {
-        reverse_proxy api:8000
-    }
-    handle /spatial/* {
-        reverse_proxy api:8000
-    }
-
-    # ESP32 Artisan WebSocket Stream
-    handle /ws/* {
-        reverse_proxy api:8000
-    }
-
-    # Next.js 14 Web Frontend
-    handle {
-        reverse_proxy web:3000
-    }
-}
-
-# Optional Internal TLS block (accessible via https://192.168.5.109)
-https://192.168.5.109 {
-    tls internal
-    encode gzip zstd
-
     handle /healthz {
         reverse_proxy api:8000
     }
-    handle /docs* {
-        reverse_proxy api:8000
-    }
-    handle /openapi.json {
-        reverse_proxy api:8000
-    }
-    handle /api/* {
-        reverse_proxy api:8000
-    }
+
     handle /spatial/* {
         reverse_proxy api:8000
     }
+
     handle /ws/* {
         reverse_proxy api:8000
     }
+
+    # Fallback to Next.js Web UI
     handle {
         reverse_proxy web:3000
     }

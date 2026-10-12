@@ -4,9 +4,14 @@
     auto_https off
 }
 
-# Plain HTTP block for LAN direct access
+# Plain HTTP block
 :80, http://192.168.5.109 {
     encode gzip zstd
+
+    # Public Traceability QR Resolver
+    handle /traceability/* {
+        reverse_proxy api:8000
+    }
 
     # FastAPI Health & Docs
     handle /healthz {
@@ -38,11 +43,14 @@
     }
 }
 
-# Optional Internal TLS block (accessible via https://192.168.5.109)
+# Optional Internal TLS block
 https://192.168.5.109 {
     tls internal
     encode gzip zstd
 
+    handle /traceability/* {
+        reverse_proxy api:8000
+    }
     handle /healthz {
         reverse_proxy api:8000
     }

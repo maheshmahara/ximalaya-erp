@@ -18,7 +18,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://103.254.186.194:55555",
+        "http://192.168.5.109:3000",
+        "http://192.168.5.109","*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,13 +31,15 @@ app.add_middleware(
 async def healthz():
     return {"status": "ok", "service": "ximalaya_api", "system": "operational"}
 
-# Include all module routers
-app.include_router(spatial_router)
-app.include_router(sales_router)
-app.include_router(traceability_router)
-app.include_router(analytics_router)
-app.include_router(logistics_router)
+# Include all module routers under the unified /api umbrella
 app.include_router(auth_router)
+app.include_router(spatial_router, prefix="/api")
+app.include_router(roasting_router, prefix="/api")
+app.include_router(sales_router, prefix="/api")
+app.include_router(traceability_router, prefix="/api")
+app.include_router(traceability_router)
+app.include_router(traceability_router)
+app.include_router(analytics_router, prefix="/api")
+app.include_router(logistics_router, prefix="/api")
+app.include_router(packaging_router, prefix="/api")
 app.include_router(ws_router)
-app.include_router(roasting_router)
-app.include_router(packaging_router)
